@@ -10,31 +10,33 @@ Smoke tests for the visualization module.
 Verifies all functions run without errors and return correct types.
 """
 
+import os
+import sys
+import tempfile
+
 import numpy as np
 import pytest
-import sys
-import os
-import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import matplotlib
+
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import matplotlib.figure
+import matplotlib.pyplot as plt
 
 from src.models.black_scholes import BlackScholesModel
 from src.utils.visualization import (
-    plot_bs_price_and_intrinsic,
     plot_all_greeks,
-    plot_greek_vs_time,
-    plot_payoff_diagram,
-    plot_portfolio_greeks,
-    plot_pnl_attribution,
+    plot_bs_price_and_intrinsic,
     plot_gamma_theta_tradeoff,
-    plot_vol_sensitivity,
-    plot_implied_vol_smile,
+    plot_greek_vs_time,
     plot_greeks_heatmap,
+    plot_implied_vol_smile,
+    plot_payoff_diagram,
+    plot_pnl_attribution,
+    plot_portfolio_greeks,
+    plot_vol_sensitivity,
     save_figure,
 )
 
@@ -161,7 +163,8 @@ class TestNewVisualizations:
 
     def test_plot_implied_vol_smile(self, model):
         """Generate synthetic market prices and plot smile."""
-        import sys, os
+        import os
+        import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
         strikes = [85, 90, 95, 100, 105, 110, 115]
         market_prices = [

@@ -24,14 +24,21 @@ References
 .. [6] Brenner & Subrahmanyam (1988). FAJ 5, 80-83.
 """
 
+import warnings
+from typing import Dict
+
 import numpy as np
-from scipy.stats import norm
 from scipy.optimize import brentq
-from typing import Union, Dict
+from scipy.special import ndtr
 
-from .base import PricingModel
+from .base import Numeric, PricingModel
 
-Numeric = Union[float, np.ndarray]
+_INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
+
+
+def _norm_pdf(x: Numeric) -> Numeric:
+    """Standard normal PDF. ~5x faster than scipy.stats.norm.pdf for arrays."""
+    return _INV_SQRT_2PI * np.exp(-0.5 * x * x)  # type: ignore[no-any-return]
 
 
 class BlackScholesModel(PricingModel):
@@ -59,7 +66,6 @@ class BlackScholesModel(PricingModel):
                 f"Use decimal: 0.20 for 20%."
             )
         if sigma > 5.0:
-            import warnings
             warnings.warn(
                 f"sigma={sigma} is unusually large. Did you mean {sigma/100:.4f}?",
                 UserWarning, stacklevel=2,
@@ -157,9 +163,9 @@ class BlackScholesModel(PricingModel):
         disc_q = np.exp(-q * T)
 
         if opt == 'call':
-            p = S * disc_q * norm.cdf(d1) - K * disc_r * norm.cdf(d2)
+            p = S * disc_q * ndtr(d1) - K * disc_r * ndtr(d2)
         else:
-            p = K * disc_r * norm.cdf(-d2) - S * disc_q * norm.cdf(-d1)
+            p = K * disc_r * ndtr(-d2) - S * disc_q * ndtr(-d1)
 
         p = np.maximum(p, 0.0)
         return float(p) if p.ndim == 0 else p
@@ -175,7 +181,7 @@ class BlackScholesModel(PricingModel):
         opt = self._validate_option_type(option_type)
         d1, _ = self._compute_d1_d2(S, K, T, r, q)
         disc_q = np.exp(-q * T)
-        result = disc_q * norm.cdf(d1) if opt == 'call' else -disc_q * norm.cdf(-d1)
+        result = disc_q * ndtr(d1) if opt == 'call' else -disc_q * ndtr(-d1)
         return float(result) if np.ndim(result) == 0 else result
 
     def gamma(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -186,7 +192,7 @@ class BlackScholesModel(PricingModel):
         S = np.asarray(S, dtype=np.float64)
         T = np.asarray(T, dtype=np.float64)
         d1, _ = self._compute_d1_d2(S, K, T, r, q)
-        result = np.exp(-q * T) * norm.pdf(d1) / (S * self.sigma * np.sqrt(T))
+        result = np.exp(-q * T) * _norm_pdf(d1) / (S * self.sigma * np.sqrt(T))
         return float(result) if np.ndim(result) == 0 else result
 
     def vega(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -197,7 +203,7 @@ class BlackScholesModel(PricingModel):
         S = np.asarray(S, dtype=np.float64)
         T = np.asarray(T, dtype=np.float64)
         d1, _ = self._compute_d1_d2(S, K, T, r, q)
-        result = S * np.exp(-q * T) * norm.pdf(d1) * np.sqrt(T)
+        result = S * np.exp(-q * T) * _norm_pdf(d1) * np.sqrt(T)
         return float(result) if np.ndim(result) == 0 else result
 
     def theta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -220,14 +226,14 @@ class BlackScholesModel(PricingModel):
         d1, d2 = self._compute_d1_d2(S, K, T, r, q)
         disc_r = np.exp(-r * T)
         disc_q = np.exp(-q * T)
-        phi_d1 = norm.pdf(d1)
+        phi_d1 = _norm_pdf(d1)
         sqrt_T = np.sqrt(T)
 
         time_decay = -S * disc_q * phi_d1 * self.sigma / (2.0 * sqrt_T)
         if opt == 'call':
-            result = time_decay + q * S * disc_q * norm.cdf(d1) - r * K * disc_r * norm.cdf(d2)
+            result = time_decay + q * S * disc_q * ndtr(d1) - r * K * disc_r * ndtr(d2)
         else:
-            result = time_decay - q * S * disc_q * norm.cdf(-d1) + r * K * disc_r * norm.cdf(-d2)
+            result = time_decay - q * S * disc_q * ndtr(-d1) + r * K * disc_r * ndtr(-d2)
         return float(result) if np.ndim(result) == 0 else result
 
     def rho(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -241,9 +247,9 @@ class BlackScholesModel(PricingModel):
         _, d2 = self._compute_d1_d2(S, K, T, r, q)
         disc_r = np.exp(-r * T)
         if opt == 'call':
-            result = K * T * disc_r * norm.cdf(d2)
+            result = K * T * disc_r * ndtr(d2)
         else:
-            result = -K * T * disc_r * norm.cdf(-d2)
+            result = -K * T * disc_r * ndtr(-d2)
         return float(result) if np.ndim(result) == 0 else result
 
     # ──────────────────────────────────────────────
@@ -259,7 +265,7 @@ class BlackScholesModel(PricingModel):
         self._validate_inputs(S, K, T, r)
         self._validate_option_type(option_type)
         d1, d2 = self._compute_d1_d2(S, K, T, r, q)
-        result = -np.exp(-q * T) * norm.pdf(d1) * d2 / self.sigma
+        result = -np.exp(-q * T) * _norm_pdf(d1) * d2 / self.sigma
         return float(result) if np.ndim(result) == 0 else result
 
     def volga(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -273,7 +279,7 @@ class BlackScholesModel(PricingModel):
         S = np.asarray(S, dtype=np.float64)
         T = np.asarray(T, dtype=np.float64)
         d1, d2 = self._compute_d1_d2(S, K, T, r, q)
-        v = S * np.exp(-q * T) * norm.pdf(d1) * np.sqrt(T)
+        v = S * np.exp(-q * T) * _norm_pdf(d1) * np.sqrt(T)
         result = v * d1 * d2 / self.sigma
         return float(result) if np.ndim(result) == 0 else result
 
@@ -290,15 +296,15 @@ class BlackScholesModel(PricingModel):
         T = np.asarray(T, dtype=np.float64)
         d1, d2 = self._compute_d1_d2(S, K, T, r, q)
         disc_q = np.exp(-q * T)
-        phi_d1 = norm.pdf(d1)
+        phi_d1 = _norm_pdf(d1)
         sigma = self.sigma
         sqrt_T = np.sqrt(T)
 
         common = -disc_q * phi_d1 * (2*(r - q)*T - d2*sigma*sqrt_T) / (2*sigma*T*sqrt_T)
         if opt == 'call':
-            result = q * disc_q * norm.cdf(d1) + common
+            result = q * disc_q * ndtr(d1) + common
         else:
-            result = -q * disc_q * norm.cdf(-d1) + common
+            result = -q * disc_q * ndtr(-d1) + common
         return float(result) if np.ndim(result) == 0 else result
 
     def speed(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -312,7 +318,7 @@ class BlackScholesModel(PricingModel):
         S = np.asarray(S, dtype=np.float64)
         T = np.asarray(T, dtype=np.float64)
         d1, _ = self._compute_d1_d2(S, K, T, r, q)
-        g = np.exp(-q * T) * norm.pdf(d1) / (S * self.sigma * np.sqrt(T))
+        g = np.exp(-q * T) * _norm_pdf(d1) / (S * self.sigma * np.sqrt(T))
         result = -g / S * (d1 / (self.sigma * np.sqrt(T)) + 1.0)
         return float(result) if np.ndim(result) == 0 else result
 
@@ -326,7 +332,7 @@ class BlackScholesModel(PricingModel):
         S = np.asarray(S, dtype=np.float64)
         T = np.asarray(T, dtype=np.float64)
         d1, d2 = self._compute_d1_d2(S, K, T, r, q)
-        g = np.exp(-q * T) * norm.pdf(d1) / (S * self.sigma * np.sqrt(T))
+        g = np.exp(-q * T) * _norm_pdf(d1) / (S * self.sigma * np.sqrt(T))
         result = g * (d1 * d2 - 1.0) / self.sigma
         return float(result) if np.ndim(result) == 0 else result
 
@@ -344,7 +350,7 @@ class BlackScholesModel(PricingModel):
         d1, d2 = self._compute_d1_d2(S, K, T, r, q)
         sigma = self.sigma
         sqrt_T = np.sqrt(T)
-        g = np.exp(-q * T) * norm.pdf(d1) / (S * sigma * sqrt_T)
+        g = np.exp(-q * T) * _norm_pdf(d1) / (S * sigma * sqrt_T)
         bracket = 2*q*T + 1.0 + d1 * (2*(r - q)*T - d2*sigma*sqrt_T) / (sigma * sqrt_T)
         result = -g / (2.0 * T) * bracket
         return float(result) if np.ndim(result) == 0 else result
@@ -365,7 +371,7 @@ class BlackScholesModel(PricingModel):
         r = np.asarray(r, dtype=np.float64)
         _, d2 = self._compute_d1_d2(S, K, T, r, q)
         disc_r = np.exp(-r * T)
-        result = -disc_r * norm.cdf(d2) if opt == 'call' else disc_r * norm.cdf(-d2)
+        result = -disc_r * ndtr(d2) if opt == 'call' else disc_r * ndtr(-d2)
         return float(result) if np.ndim(result) == 0 else result
 
     def dual_gamma(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -380,7 +386,7 @@ class BlackScholesModel(PricingModel):
         T = np.asarray(T, dtype=np.float64)
         r = np.asarray(r, dtype=np.float64)
         _, d2 = self._compute_d1_d2(S, K, T, r, q)
-        result = np.exp(-r * T) * norm.pdf(d2) / (K * self.sigma * np.sqrt(T))
+        result = np.exp(-r * T) * _norm_pdf(d2) / (K * self.sigma * np.sqrt(T))
         return float(result) if np.ndim(result) == 0 else result
 
     # ──────────────────────────────────────────────
@@ -393,7 +399,7 @@ class BlackScholesModel(PricingModel):
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         _, d2 = self._compute_d1_d2(S, K, T, r, q)
-        result = norm.cdf(d2) if opt == 'call' else norm.cdf(-d2)
+        result = ndtr(d2) if opt == 'call' else ndtr(-d2)
         return float(result) if np.ndim(result) == 0 else result
 
     def elasticity(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
@@ -407,7 +413,8 @@ class BlackScholesModel(PricingModel):
         d = self.delta(S, K, T, r, opt, q)
         v = self.price(S, K, T, r, opt, q)
         S = np.asarray(S, dtype=np.float64)
-        result = np.where(np.abs(v) > 1e-15, d * S / v, np.nan)
+        safe_v = np.where(np.abs(v) > 1e-15, v, 1.0)
+        result = np.where(np.abs(v) > 1e-15, d * S / safe_v, np.nan)
         return float(result) if np.ndim(result) == 0 else result
 
     # ──────────────────────────────────────────────
@@ -504,12 +511,12 @@ class BlackScholesModel(PricingModel):
             sigma_sqrt_T = sigma * sqrt_T
             d1 = (log_SK + (r - q + 0.5 * sigma**2) * T) / sigma_sqrt_T
             d2 = d1 - sigma_sqrt_T
-            phi_d1 = norm.pdf(d1)
+            phi_d1 = _norm_pdf(d1)
 
             if opt == 'call':
-                p = max(S * disc_q * norm.cdf(d1) - K * disc_r * norm.cdf(d2), 0.0)
+                p = max(S * disc_q * ndtr(d1) - K * disc_r * ndtr(d2), 0.0)
             else:
-                p = max(K * disc_r * norm.cdf(-d2) - S * disc_q * norm.cdf(-d1), 0.0)
+                p = max(K * disc_r * ndtr(-d2) - S * disc_q * ndtr(-d1), 0.0)
 
             diff = p - price_market
             if abs(diff) < tol:
@@ -539,9 +546,9 @@ class BlackScholesModel(PricingModel):
             dd1 = (log_SK + (r - q + 0.5 * sig**2) * T) / ssqt
             dd2 = dd1 - ssqt
             if opt == 'call':
-                return max(S * disc_q * norm.cdf(dd1) - K * disc_r * norm.cdf(dd2), 0.0) - price_market
+                return max(S * disc_q * ndtr(dd1) - K * disc_r * ndtr(dd2), 0.0) - price_market
             else:
-                return max(K * disc_r * norm.cdf(-dd2) - S * disc_q * norm.cdf(-dd1), 0.0) - price_market
+                return max(K * disc_r * ndtr(-dd2) - S * disc_q * ndtr(-dd1), 0.0) - price_market
 
         try:
             return float(brentq(obj, 1e-6, 10.0, xtol=tol, maxiter=500))
@@ -576,12 +583,12 @@ class BlackScholesModel(PricingModel):
 
         disc_r = np.exp(-r * T)
         disc_q = np.exp(-q * T)
-        phi_d1 = norm.pdf(d1)
-        phi_d2 = norm.pdf(d2)
-        N_d1 = norm.cdf(d1)
-        N_d2 = norm.cdf(d2)
-        Nn_d1 = norm.cdf(-d1)
-        Nn_d2 = norm.cdf(-d2)
+        phi_d1 = _norm_pdf(d1)
+        phi_d2 = _norm_pdf(d2)
+        N_d1 = ndtr(d1)
+        N_d2 = ndtr(d2)
+        Nn_d1 = ndtr(-d1)
+        Nn_d2 = ndtr(-d2)
 
         # ----- Price -----
         if opt == 'call':
@@ -615,7 +622,8 @@ class BlackScholesModel(PricingModel):
         color_bracket = 2*q*T + 1.0 + d1*(2*(r-q)*T - d2*sigma*sqrt_T) / (sigma*sqrt_T)
         color_val = -gamma_val / (2.0 * T) * color_bracket
         dg_val = disc_r * phi_d2 / (K * sigma * sqrt_T)
-        elast_val = np.where(np.abs(price) > 1e-15, delta_val * S / price, np.nan)
+        safe_price = np.where(np.abs(price) > 1e-15, price, 1.0)
+        elast_val = np.where(np.abs(price) > 1e-15, delta_val * S / safe_price, np.nan)
 
         res = {
             'price': price, 'delta': delta_val, 'gamma': gamma_val,

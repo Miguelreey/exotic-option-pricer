@@ -24,12 +24,14 @@ Color conventions (consistent throughout):
 """
 
 import matplotlib
+
 matplotlib.use('Agg')  # Non-interactive backend: safe for servers and CI/CD
+
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
-from typing import Union, List, Dict, Tuple, Optional
 
 try:
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -312,9 +314,9 @@ def plot_payoff_diagram(legs: List[Dict], S_range: np.ndarray
             label='Payoff at Expiry', zorder=3)
     ax.plot(S_range, pnl, color=COLORS['pnl_pos'], linewidth=2.0,
             linestyle='--', label='Net P&L', zorder=3)
-    ax.fill_between(S_range, pnl, 0, where=(pnl >= 0), alpha=0.15,
+    ax.fill_between(S_range, pnl, 0, where=(pnl >= 0), alpha=0.15,  # type: ignore[arg-type]
                     color=COLORS['pnl_pos'], interpolate=True)
-    ax.fill_between(S_range, pnl, 0, where=(pnl < 0), alpha=0.15,
+    ax.fill_between(S_range, pnl, 0, where=(pnl < 0), alpha=0.15,  # type: ignore[arg-type]
                     color=COLORS['pnl_neg'], interpolate=True)
     ax.axhline(y=0, color='black', linewidth=0.8, alpha=0.4)
     ax.set_xlabel('Spot at Expiry ($S_T$)', fontsize=12)
@@ -400,7 +402,7 @@ def plot_pnl_attribution(pnl_components: Dict[str, float],
     y_pos = np.arange(len(labels))
     ax.barh(y_pos, values, color=bar_colors, edgecolor='white', height=0.6)
     ax.set_yticks(y_pos)
-    ax.set_yticklabels([l.capitalize() for l in labels], fontsize=11)
+    ax.set_yticklabels([label.capitalize() for label in labels], fontsize=11)
     ax.axvline(x=0, color='black', linewidth=0.8)
     ax.set_xlabel('P&L Contribution ($)', fontsize=12)
     ax.set_title('P&L Attribution by Greek Component', fontsize=13)

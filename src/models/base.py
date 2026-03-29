@@ -18,7 +18,8 @@ References
 """
 
 from abc import ABC, abstractmethod
-from typing import Union, Dict
+from typing import Dict, Union
+
 import numpy as np
 
 Numeric = Union[float, np.ndarray]

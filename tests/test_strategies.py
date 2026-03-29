@@ -20,10 +20,11 @@ Parameters: S=100, K=100, T=1.0, r=0.05, sigma=0.20
 Reference: Hull, Ch. 12-13.
 """
 
+import os
+import sys
+
 import numpy as np
 import pytest
-import sys
-import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.models.black_scholes import BlackScholesModel

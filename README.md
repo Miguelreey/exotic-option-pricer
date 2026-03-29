@@ -1,5 +1,12 @@
 # Exotic Option Pricer
 
+[![CI](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml/badge.svg)](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/badge/coverage-96%25-brightgreen.svg)](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml)
+[![Python 3.10-3.13](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![ruff](https://img.shields.io/badge/linting-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+[![mypy](https://img.shields.io/badge/type%20check-mypy-blue.svg)](https://mypy-lang.org/)
+
 Production-grade derivatives pricing library implementing analytical and numerical models used in institutional quantitative finance.
 
 ## Phase 1: Black-Scholes-Merton Analytical Engine
@@ -39,7 +46,7 @@ greeks = bs.greeks(S=100, K=100, T=1.0, r=0.05, option_type='call')
 
 # Implied volatility from market price
 iv = BlackScholesModel.implied_vol(
-    market_price=10.45, S=100, K=100, T=1.0, r=0.05, option_type='call'
+    price_market=10.45, S=100, K=100, T=1.0, r=0.05, option_type='call'
 )
 # 0.2000
 ```
@@ -47,7 +54,7 @@ iv = BlackScholesModel.implied_vol(
 ## Installation
 
 ```bash
-git clone https://github.com/MiguelReyy/exotic-option-pricer.git
+git clone https://github.com/Miguelreey/exotic-option-pricer.git
 cd exotic-option-pricer
 pip install -e ".[dev]"
 ```

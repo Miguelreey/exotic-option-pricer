@@ -9,6 +9,6 @@ utils  : Visualization and Greeks utilities
 
 __version__ = '1.0.0'
 
-from .models import PricingModel, BlackScholesModel
+from .models import BlackScholesModel, PricingModel
 
 __all__ = ['PricingModel', 'BlackScholesModel']

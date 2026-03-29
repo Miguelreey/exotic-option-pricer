@@ -20,10 +20,11 @@ Reference: S=100, K=100, T=1, r=0.05, sigma=0.20
 d1=0.35, d2=0.15, C=10.4506, P=5.5735
 """
 
+import os
+import sys
+
 import numpy as np
 import pytest
-import sys
-import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.models.black_scholes import BlackScholesModel
@@ -320,7 +321,8 @@ class TestVectorization:
         assert isinstance(bs.price(100.0, 100.0, 1.0, 0.05, 'call'), float)
 
     def test_returns_array_for_array_input(self, bs):
-        assert isinstance(bs.price(np.array([80, 100, 120.0]), 100.0, 1.0, 0.05, 'call'), np.ndarray)
+        result = bs.price(np.array([80, 100, 120.0]), 100.0, 1.0, 0.05, 'call')
+        assert isinstance(result, np.ndarray)
 
 
 # ============================================================================

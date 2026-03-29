@@ -11,14 +11,15 @@ References
 .. [2] Hull (2018). Options, Futures & Other Derivatives, 10th ed.
 """
 
+import os
+import sys
+
 import numpy as np
 import pytest
-import sys
-import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from hypothesis import given, settings, assume
+from hypothesis import given, settings
 from hypothesis.strategies import floats
 
 from src.models.black_scholes import BlackScholesModel
@@ -268,7 +269,9 @@ class TestFiniteProperty:
         for name, val in g.items():
             if name == 'elasticity':
                 continue
-            assert np.isfinite(val), f"{name} is not finite for S={S}, K={K}, T={T}, r={r}, sigma={sigma}"
+            assert np.isfinite(val), (
+                f"{name} not finite for S={S}, K={K}, T={T}, r={r}, sigma={sigma}"
+            )
 
 
 if __name__ == '__main__':

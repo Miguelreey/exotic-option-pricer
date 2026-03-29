@@ -10,15 +10,17 @@ with BlackScholesModel — to guarantee true independence.
 Additionally benchmarks against QuantLib if available.
 """
 
+import os
+import sys
+import time
+
 import numpy as np
 import pytest
-import sys
-import os
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from scipy.stats import norm
+
 from src.models.black_scholes import BlackScholesModel
 
 
