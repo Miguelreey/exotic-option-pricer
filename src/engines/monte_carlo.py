@@ -5,9 +5,12 @@ Production-grade Monte Carlo pricing engine for European and exotic derivatives.
 
 Implements:
 - GBM simulation: exact (log-space), Euler-Maruyama, Milstein
+- Quasi-Monte Carlo: scrambled Sobol sequences for O(1/N) convergence
 - European option pricing with cross-validation against BS analytical
 - Generic payoff pricing (extensible to any path-dependent derivative)
-- Variance reduction: antithetic variates, control variates, combined
+- Batch pricing: multiple payoffs on shared paths (desk-style efficiency)
+- Variance reduction: antithetic variates, control variates, importance sampling
+- Euler absorption at zero for non-GBM SDEs (Heston, rBergomi)
 - Convergence analysis with statistical diagnostics
 - Reproducible results via numpy.random.Generator (not legacy global state)
 
@@ -62,8 +65,14 @@ from dataclasses import dataclass
 from typing import Literal, overload
 
 import numpy as np
+from scipy.stats import norm as _norm_dist
+from scipy.stats.qmc import Sobol as _Sobol
 
-from .variance_reduction import control_variate_adjust
+from .variance_reduction import (
+    control_variate_adjust,
+    importance_sampling_likelihood,
+    importance_sampling_shift,
+)
 
 # z_{0.025} for 95% confidence intervals
 _Z_95 = 1.959964
@@ -223,6 +232,7 @@ class MonteCarloEngine:
         q: float,
         scheme: Literal["exact", "euler", "milstein"],
         Z: np.ndarray,
+        absorb: bool = False,
     ) -> np.ndarray:
         """Build GBM paths from pre-generated standard normal increments.
 
@@ -239,6 +249,10 @@ class MonteCarloEngine:
         Z : np.ndarray, shape (n_paths, n_steps)
             Standard normal increments. **Modified in-place** for the exact
             scheme to minimize memory allocation.
+        absorb : bool, default False
+            If True, clamp S_t = max(S_t, 0) after each Euler step.
+            Only applies to the Euler scheme — exact and Milstein produce
+            strictly positive paths by construction (log-space).
 
         Returns
         -------
@@ -281,6 +295,8 @@ class MonteCarloEngine:
                 paths[:, step + 1] = paths[:, step] * (
                     1.0 + drift_coeff + diff_coeff * Z[:, step]
                 )
+                if absorb:
+                    np.maximum(paths[:, step + 1], 0.0, out=paths[:, step + 1])
 
         elif scheme == "milstein":
             # Milstein for GBM: vectorized via log-space cumsum.
@@ -330,6 +346,8 @@ class MonteCarloEngine:
         *,
         n_steps: int | None = ...,
         antithetic: Literal[False] = ...,
+        quasi: bool = ...,
+        absorb: bool = ...,
     ) -> np.ndarray: ...
 
     @overload
@@ -344,6 +362,8 @@ class MonteCarloEngine:
         *,
         n_steps: int | None = ...,
         antithetic: Literal[True],
+        quasi: bool = ...,
+        absorb: bool = ...,
     ) -> tuple[np.ndarray, np.ndarray]: ...
 
     def simulate_gbm(
@@ -357,6 +377,8 @@ class MonteCarloEngine:
         *,
         n_steps: int | None = None,
         antithetic: bool = False,
+        quasi: bool = False,
+        absorb: bool = False,
     ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         """
         Simulate GBM paths under the risk-neutral measure Q.
@@ -389,6 +411,19 @@ class MonteCarloEngine:
             Returns a tuple (paths, paths_anti) instead of a single array.
             The antithetic paths preserve negative correlation with the
             originals, enabling variance reduction when averaged per pair.
+        quasi : bool, default False
+            If True, use Quasi-Monte Carlo with scrambled Sobol sequences
+            instead of pseudo-random normals. Sobol sequences fill the
+            sample space more uniformly, achieving O(1/N) convergence
+            (up to log factors) vs O(1/sqrt(N)) for standard MC.
+            Most effective for low-dimensional problems (n_steps <= ~40).
+            Uses Owen scrambling for unbiased estimates with valid CIs.
+        absorb : bool, default False
+            If True, clamp S_t = max(S_t, 0) after each Euler step to
+            prevent negative prices. Only affects the 'euler' scheme —
+            'exact' and 'milstein' produce strictly positive paths by
+            construction (log-space). Essential for non-GBM SDEs (Heston,
+            rBergomi) where Euler can produce negative values.
 
         Returns
         -------
@@ -432,19 +467,32 @@ class MonteCarloEngine:
         if n_steps_actual < 1:
             raise ValueError(f"n_steps must be >= 1, got {n_steps_actual}")
 
-        Z = self._rng.standard_normal((self.n_paths, n_steps_actual))
+        if quasi:
+            # Scrambled Sobol: low-discrepancy sequence with Owen scrambling
+            # for unbiased estimates. Convergence O(1/N · (log N)^d) vs O(1/√N).
+            # n_paths is rounded up to the next power of 2 for optimal
+            # Sobol properties, then trimmed to the requested count.
+            sampler = _Sobol(d=n_steps_actual, scramble=True, seed=self.seed)
+            m = int(np.ceil(np.log2(max(self.n_paths, 2))))
+            uniforms = sampler.random(2**m)[:self.n_paths]
+            # Inverse CDF: uniform -> normal. Clip to avoid inf at boundaries.
+            Z = _norm_dist.ppf(np.clip(uniforms, 1e-10, 1 - 1e-10))
+        else:
+            Z = self._rng.standard_normal((self.n_paths, n_steps_actual))
 
         if antithetic:
             Z_anti = -Z  # new array — unaffected by in-place ops on Z
             paths_pos = self._build_paths_from_normals(
-                S0, T, r, sigma, q, scheme, Z,
+                S0, T, r, sigma, q, scheme, Z, absorb=absorb,
             )
             paths_neg = self._build_paths_from_normals(
-                S0, T, r, sigma, q, scheme, Z_anti,
+                S0, T, r, sigma, q, scheme, Z_anti, absorb=absorb,
             )
             return paths_pos, paths_neg
 
-        return self._build_paths_from_normals(S0, T, r, sigma, q, scheme, Z)
+        return self._build_paths_from_normals(
+            S0, T, r, sigma, q, scheme, Z, absorb=absorb,
+        )
 
     # ──────────────────────────────────────────────
     # European option pricing
@@ -461,6 +509,7 @@ class MonteCarloEngine:
         q: float = 0.0,
         antithetic: bool = False,
         control_variate: bool = False,
+        importance_sampling: bool = False,
     ) -> MCResult:
         """
         Price a European vanilla option via Monte Carlo.
@@ -488,11 +537,22 @@ class MonteCarloEngine:
             Use antithetic variates.
         control_variate : bool, default False
             Use control variates with discounted S_T as control.
+        importance_sampling : bool, default False
+            Use importance sampling with optimal drift shift. Centers
+            the terminal distribution at the strike K, dramatically
+            reducing variance for deep OTM options (where standard MC
+            produces mostly zero payoffs). Incompatible with antithetic
+            variates; compatible with control variates.
 
         Returns
         -------
         MCResult
             Pricing result with price, std_error, CI, and metadata.
+
+        Raises
+        ------
+        ValueError
+            If importance_sampling and antithetic are both True.
 
         Notes
         -----
@@ -521,7 +581,45 @@ class MonteCarloEngine:
         if opt not in ("call", "put"):
             raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
-        # Payoff function (undiscounted — price() handles discounting)
+        if importance_sampling and antithetic:
+            raise ValueError(
+                "importance_sampling and antithetic cannot be used together. "
+                "IS changes the sampling distribution, breaking antithetic symmetry."
+            )
+
+        # --- Importance sampling path (separate code path for clarity) ---
+        if importance_sampling:
+            theta = importance_sampling_shift(S0, K, T, r, sigma, q)
+            Z = self._rng.standard_normal(self.n_paths)
+            Z_shifted = Z + theta
+
+            # Compute S_T with shifted normals
+            mu_T = (r - q - 0.5 * sigma * sigma) * T
+            S_T = S0 * np.exp(mu_T + sigma * np.sqrt(T) * Z_shifted)
+
+            # Payoff (undiscounted)
+            if opt == "call":
+                raw_payoffs = np.maximum(S_T - K, 0.0)
+            else:
+                raw_payoffs = np.maximum(K - S_T, 0.0)
+
+            # Likelihood ratio correction
+            lr = importance_sampling_likelihood(Z, theta)
+            payoffs = np.exp(-r * T) * raw_payoffs * lr
+
+            # Optional: combine with control variate
+            if control_variate:
+                discount = np.exp(-r * T)
+                cv_expected = S0 * np.exp(-q * T)
+                control_vals = discount * S_T * lr
+                payoffs, _ = control_variate_adjust(
+                    payoffs, control_vals, cv_expected,
+                )
+
+            vr_label = "importance" + ("+control" if control_variate else "")
+            return _build_result(payoffs, self.n_paths, vr_label)
+
+        # --- Standard path ---
         if opt == "call":
             def payoff_fn(p: np.ndarray) -> np.ndarray:
                 return np.maximum(p[:, -1] - K, 0.0)
@@ -658,6 +756,66 @@ class MonteCarloEngine:
                 )
 
         return _build_result(payoffs, paths.shape[0], vr_label)
+
+    # ──────────────────────────────────────────────
+    # Batch pricing (reuse paths for multiple payoffs)
+    # ──────────────────────────────────────────────
+
+    def price_batch(
+        self,
+        payoff_fns: list[Callable[[np.ndarray], np.ndarray]],
+        paths: np.ndarray,
+        r: float,
+        T: float,
+        paths_anti: np.ndarray | None = None,
+        control_fn: Callable[[np.ndarray], tuple[np.ndarray, float]] | None = None,
+    ) -> list[MCResult]:
+        """
+        Price multiple derivatives on the same simulated paths.
+
+        In a real desk, thousands of options (different strikes, maturities)
+        share the same underlying — regenerating paths per option is wasteful.
+        This method evaluates all payoffs on a single set of paths, amortizing
+        the simulation cost.
+
+        Parameters
+        ----------
+        payoff_fns : list of callable
+            Each callable maps paths -> undiscounted payoffs (same signature
+            as payoff_fn in price()).
+        paths : np.ndarray, shape (n_paths, n_steps + 1)
+            Simulated price paths (shared across all payoffs).
+        r : float
+            Risk-free rate for discounting.
+        T : float
+            Time to maturity.
+        paths_anti : np.ndarray or None, default None
+            Antithetic paths for variance reduction (shared).
+        control_fn : callable or None, default None
+            Control variate function (shared). Applied independently
+            to each payoff's values.
+
+        Returns
+        -------
+        list of MCResult
+            One result per payoff function, in the same order as payoff_fns.
+
+        Examples
+        --------
+        >>> mc = MonteCarloEngine(n_paths=100_000, seed=42)
+        >>> paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=1)
+        >>> strikes = [90, 95, 100, 105, 110]
+        >>> payoffs = [lambda p, K=K: np.maximum(p[:, -1] - K, 0) for K in strikes]
+        >>> results = mc.price_batch(payoffs, paths, 0.05, 1.0)
+        """
+        return [
+            self.price(
+                pf, paths, r, T,
+                paths_anti=paths_anti,
+                control_fn=control_fn,
+            )
+            for pf in payoff_fns
+        ]
 
     # ──────────────────────────────────────────────
     # Convergence analysis
