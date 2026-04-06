@@ -23,7 +23,11 @@ Full implementation of the Black-Scholes-Merton (1973) model with:
 Production Monte Carlo engine for derivative pricing under GBM dynamics:
 
 - **3 SDE schemes** — exact (log-space, zero discretization error), Euler-Maruyama, Milstein (vectorized via cumsum)
-- **Variance reduction** — antithetic variates, control variates, combined (up to 98% variance reduction)
+- **Variance reduction** — antithetic variates, control variates, importance sampling, combined (up to 98% variance reduction)
+- **Quasi-Monte Carlo** — scrambled Sobol sequences with O(1/N) convergence vs O(1/√N) for standard MC
+- **Importance sampling** — optimal drift shift for deep OTM options, likelihood ratio correction (Glasserman §4.6)
+- **Euler absorption** — clamp paths at zero for non-negative processes (prepares Heston/rBergomi)
+- **Batch pricing** — `price_batch()` reuses simulated paths across multiple payoffs/strikes
 - **Generic payoff API** — `price(payoff_fn, paths)` accepts any path-dependent payoff for exotic derivatives
 - **Convergence analysis** — std_error vs N diagnostics with optional VR
 - **Strong convergence verified** — Milstein O(dt), Euler O(sqrt(dt)), tested via shared Brownian motion
@@ -87,14 +91,14 @@ pip install -e ".[dev]"
 pytest
 ```
 
-313 tests validate correctness through multiple independent methods:
+337 tests validate correctness through multiple independent methods:
 
 | Suite | What it validates |
 |-------|-------------------|
 | `test_pricing.py` | Hull benchmarks, put-call parity, boundary conditions, finite-difference Greeks, BS PDE satisfaction, homogeneity, no-arbitrage bounds |
 | `test_properties.py` | 8 mathematical invariants across ~3,000 random parameter sets (Hypothesis) |
 | `test_benchmark.py` | 7,500-point grid vs independent reference, BS throughput (>100k opts/sec), MC throughput (paths/sec, VR overhead) |
-| `test_monte_carlo.py` | GBM distributions, Euler/Milstein weak+strong convergence, MC vs BS cross-validation (20-point grid), antithetic+control variance reduction, 95% CI coverage, PCP path-by-path, Q-martingale at intermediate times, Hypothesis properties |
+| `test_monte_carlo.py` | GBM distributions, Euler/Milstein weak+strong convergence, MC vs BS cross-validation (20-point grid), antithetic+control+IS variance reduction, QMC Sobol convergence, Euler absorption, batch pricing, 95% CI coverage, PCP path-by-path, Q-martingale, Hypothesis properties |
 | `test_strategies.py` | Straddle delta-neutrality, butterfly bounds, Greeks linearity, delta-hedge P&L |
 | `test_visualization.py` | All 13 visualization functions, figure cleanup, edge cases |
 
@@ -107,7 +111,7 @@ src/
 │   └── black_scholes.py     # BS-Merton analytical engine (16 Greeks)
 ├── engines/
 │   ├── monte_carlo.py       # MC engine: GBM simulation, European + generic pricing
-│   └── variance_reduction.py # Antithetic + control variates
+│   └── variance_reduction.py # Antithetic, control variates, importance sampling
 ├── utils/
 │   └── visualization.py     # 13 visualization functions
 ├── instruments/              # Exotic payoffs (Phase 3)

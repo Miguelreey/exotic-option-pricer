@@ -33,6 +33,8 @@ from src.engines.monte_carlo import MCResult, MonteCarloEngine
 from src.engines.variance_reduction import (
     control_variate_adjust,
     generate_antithetic_normals,
+    importance_sampling_likelihood,
+    importance_sampling_shift,
     optimal_beta,
 )
 from src.models.black_scholes import BlackScholesModel
@@ -1388,3 +1390,296 @@ class TestGenericPriceVR:
 
         assert asian.price > 0
         assert asian.price < european + 3 * asian.std_error
+
+
+# ============================================================================
+# 16. Quasi-Monte Carlo (Sobol)
+# ============================================================================
+class TestQuasiMonteCarlo:
+    """QMC with scrambled Sobol sequences."""
+
+    def test_qmc_price_unbiased(self):
+        """QMC European call price is consistent with BS analytical."""
+        bs = BlackScholesModel(sigma=HULL_SIGMA)
+        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+
+        mc = MonteCarloEngine(n_paths=50_000, seed=42)
+        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, quasi=True, n_steps=1)
+        result = mc.price(
+            lambda p: np.maximum(p[:, -1] - HULL_K, 0.0),
+            paths, HULL_R, HULL_T,
+        )
+        assert abs(result.price - bs_price) < 0.10
+
+    def test_qmc_lower_std_error_than_mc(self):
+        """QMC should produce lower std_error than pseudo-random MC."""
+        n_paths = 16_384  # power of 2 for optimal Sobol
+
+        mc_pseudo = MonteCarloEngine(n_paths=n_paths, seed=42)
+        paths_pseudo = mc_pseudo.simulate_gbm(
+            HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1,
+        )
+        result_pseudo = mc_pseudo.price(
+            lambda p: np.maximum(p[:, -1] - HULL_K, 0.0),
+            paths_pseudo, HULL_R, HULL_T,
+        )
+
+        mc_qmc = MonteCarloEngine(n_paths=n_paths, seed=42)
+        paths_qmc = mc_qmc.simulate_gbm(
+            HULL_S, HULL_T, HULL_R, HULL_SIGMA, quasi=True, n_steps=1,
+        )
+        result_qmc = mc_qmc.price(
+            lambda p: np.maximum(p[:, -1] - HULL_K, 0.0),
+            paths_qmc, HULL_R, HULL_T,
+        )
+
+        # QMC std_error should be noticeably lower
+        assert result_qmc.std_error < result_pseudo.std_error
+
+    def test_qmc_paths_shape(self):
+        """QMC paths have correct shape."""
+        mc = MonteCarloEngine(n_paths=100, n_steps=10, seed=42)
+        paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, quasi=True)
+        assert paths.shape == (100, 11)
+        assert np.all(paths[:, 0] == 100.0)
+        assert np.all(paths > 0)
+
+    def test_qmc_with_antithetic(self):
+        """QMC + antithetic produces valid paired paths."""
+        mc = MonteCarloEngine(n_paths=100, seed=42)
+        paths, paths_anti = mc.simulate_gbm(
+            100, 1.0, 0.05, 0.20, quasi=True, n_steps=1, antithetic=True,
+        )
+        assert paths.shape == paths_anti.shape
+        assert paths.shape == (100, 2)
+
+    def test_qmc_multistep_finite(self):
+        """QMC with multiple steps produces finite paths."""
+        mc = MonteCarloEngine(n_paths=256, n_steps=50, seed=42)
+        paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, quasi=True)
+        assert np.all(np.isfinite(paths))
+        assert np.all(paths > 0)
+
+
+# ============================================================================
+# 17. Importance Sampling
+# ============================================================================
+class TestImportanceSampling:
+    """Importance sampling for deep OTM options."""
+
+    def test_is_shift_atm(self):
+        """ATM option: optimal shift is near zero."""
+        theta = importance_sampling_shift(100, 100, 1.0, 0.05, 0.20)
+        assert abs(theta) < 0.5
+
+    def test_is_shift_deep_otm_call(self):
+        """Deep OTM call (K >> S0): shift is positive (move right)."""
+        theta = importance_sampling_shift(100, 200, 1.0, 0.05, 0.20)
+        assert theta > 0
+
+    def test_is_shift_deep_otm_put(self):
+        """Deep OTM put (K << S0): shift is negative (move left)."""
+        theta = importance_sampling_shift(100, 50, 1.0, 0.05, 0.20)
+        assert theta < 0
+
+    def test_is_shift_clamped(self):
+        """Extreme shifts are clamped to [-5, 5]."""
+        theta = importance_sampling_shift(100, 1000, 0.01, 0.05, 0.20)
+        assert abs(theta) <= 5.0
+
+    def test_is_likelihood_ratio_mean(self):
+        """E[L(Z)] should be approximately 1 (unbiasedness condition)."""
+        rng = np.random.default_rng(42)
+        Z = rng.standard_normal(500_000)
+        theta = 2.0
+        lr = importance_sampling_likelihood(Z, theta)
+        # E[exp(-theta*(Z+theta) + theta^2/2)] = E[exp(-theta*Z - theta^2/2)]
+        # = exp(-theta^2/2) * E[exp(-theta*Z)]
+        # = exp(-theta^2/2) * exp(theta^2/2) = 1
+        assert abs(np.mean(lr) - 1.0) < 0.01
+
+    def test_is_price_unbiased_atm(self):
+        """IS should give correct price for ATM options."""
+        bs = BlackScholesModel(sigma=HULL_SIGMA)
+        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+
+        mc = MonteCarloEngine(n_paths=200_000, seed=42)
+        result = mc.price_european(
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call',
+            importance_sampling=True,
+        )
+        assert abs(result.price - bs_price) < 4 * result.std_error
+
+    def test_is_deep_otm_variance_reduction(self):
+        """IS should dramatically reduce variance for deep OTM options."""
+        S, K, T, r, sigma = 100, 150, 0.5, 0.05, 0.20
+        n_paths = 100_000
+
+        mc_plain = MonteCarloEngine(n_paths=n_paths, seed=42)
+        result_plain = mc_plain.price_european(S, K, T, r, sigma, 'call')
+
+        mc_is = MonteCarloEngine(n_paths=n_paths, seed=42)
+        result_is = mc_is.price_european(
+            S, K, T, r, sigma, 'call', importance_sampling=True,
+        )
+
+        # IS should have much lower std_error for deep OTM
+        assert result_is.std_error < result_plain.std_error
+
+    def test_is_deep_otm_put_unbiased(self):
+        """IS for deep OTM put should match BS price."""
+        S, K, T, r, sigma = 100, 60, 1.0, 0.05, 0.20
+        bs = BlackScholesModel(sigma=sigma)
+        bs_price = bs.price(S, K, T, r, 'put')
+
+        mc = MonteCarloEngine(n_paths=200_000, seed=42)
+        result = mc.price_european(
+            S, K, T, r, sigma, 'put', importance_sampling=True,
+        )
+        assert abs(result.price - bs_price) < 4 * result.std_error
+
+    def test_is_incompatible_with_antithetic(self):
+        """IS and antithetic should raise ValueError."""
+        mc = MonteCarloEngine(n_paths=1000, seed=42)
+        with pytest.raises(ValueError, match="importance_sampling and antithetic"):
+            mc.price_european(
+                100, 100, 1.0, 0.05, 0.20, 'call',
+                importance_sampling=True, antithetic=True,
+            )
+
+    def test_is_with_control_variate(self):
+        """IS + control variate should produce valid results."""
+        bs = BlackScholesModel(sigma=HULL_SIGMA)
+        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+
+        mc = MonteCarloEngine(n_paths=100_000, seed=42)
+        result = mc.price_european(
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call',
+            importance_sampling=True, control_variate=True,
+        )
+        assert abs(result.price - bs_price) < 4 * result.std_error
+        assert result.variance_reduction == "importance+control"
+
+    def test_is_vr_label(self):
+        """IS variance reduction label is correct."""
+        mc = MonteCarloEngine(n_paths=1000, seed=42)
+        result = mc.price_european(
+            100, 100, 1.0, 0.05, 0.20, 'call', importance_sampling=True,
+        )
+        assert result.variance_reduction == "importance"
+
+
+# ============================================================================
+# 18. Euler Absorption at Zero
+# ============================================================================
+class TestEulerAbsorption:
+    """Euler scheme with absorption at zero."""
+
+    def test_absorb_prevents_negative_prices(self):
+        """With high vol and large dt, Euler without absorb can go negative."""
+        # High vol + few steps maximizes chance of negative S
+        mc = MonteCarloEngine(n_paths=10_000, n_steps=10, seed=42)
+        paths = mc.simulate_gbm(
+            100, 1.0, 0.05, 2.0, scheme='euler', absorb=True,
+        )
+        assert np.all(paths >= 0.0)
+
+    def test_absorb_no_effect_on_exact_scheme(self):
+        """Exact scheme always produces positive paths; absorb is irrelevant."""
+        mc = MonteCarloEngine(n_paths=1000, n_steps=10, seed=42)
+        paths1 = mc.simulate_gbm(100, 1.0, 0.05, 0.20, scheme='exact')
+        mc.reset()
+        paths2 = mc.simulate_gbm(100, 1.0, 0.05, 0.20, scheme='exact', absorb=True)
+        np.testing.assert_array_equal(paths1, paths2)
+
+    def test_absorb_false_can_produce_negative(self):
+        """Without absorb, high-vol Euler may produce negative prices."""
+        mc = MonteCarloEngine(n_paths=50_000, n_steps=5, seed=42)
+        paths = mc.simulate_gbm(
+            100, 1.0, 0.05, 3.0, scheme='euler', absorb=False,
+        )
+        # With sigma=3.0 and 5 steps, very likely to get some negatives
+        assert np.any(paths < 0)
+
+    def test_absorb_preserves_initial_price(self):
+        """S_0 column is unchanged with absorb."""
+        mc = MonteCarloEngine(n_paths=100, n_steps=10, seed=42)
+        paths = mc.simulate_gbm(
+            100, 1.0, 0.05, 1.0, scheme='euler', absorb=True,
+        )
+        assert np.all(paths[:, 0] == 100.0)
+
+
+# ============================================================================
+# 19. Batch Pricing
+# ============================================================================
+class TestBatchPricing:
+    """Batch pricing of multiple payoffs on shared paths."""
+
+    def test_batch_matches_individual(self):
+        """Batch results must match individual pricing exactly."""
+        mc = MonteCarloEngine(n_paths=50_000, seed=42)
+        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
+
+        strikes = [90.0, 95.0, 100.0, 105.0, 110.0]
+        payoff_fns = [
+            lambda p, K=K: np.maximum(p[:, -1] - K, 0.0) for K in strikes
+        ]
+
+        # Batch
+        batch_results = mc.price_batch(payoff_fns, paths, HULL_R, HULL_T)
+
+        # Individual (on SAME paths — no re-simulation)
+        individual_results = [
+            mc.price(pf, paths, HULL_R, HULL_T) for pf in payoff_fns
+        ]
+
+        assert len(batch_results) == len(strikes)
+        for br, ir in zip(batch_results, individual_results):
+            assert br.price == ir.price
+            assert br.std_error == ir.std_error
+
+    def test_batch_with_antithetic(self):
+        """Batch pricing with shared antithetic paths."""
+        mc = MonteCarloEngine(n_paths=50_000, seed=42)
+        paths, paths_anti = mc.simulate_gbm(
+            HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1, antithetic=True,
+        )
+
+        payoff_fns = [
+            lambda p: np.maximum(p[:, -1] - 95, 0.0),
+            lambda p: np.maximum(p[:, -1] - 100, 0.0),
+            lambda p: np.maximum(p[:, -1] - 105, 0.0),
+        ]
+
+        results = mc.price_batch(
+            payoff_fns, paths, HULL_R, HULL_T, paths_anti=paths_anti,
+        )
+        assert len(results) == 3
+        assert all(r.variance_reduction == "antithetic" for r in results)
+        # Lower strike -> higher price
+        assert results[0].price > results[1].price > results[2].price
+
+    def test_batch_prices_correct_vs_bs(self):
+        """Batch prices are consistent with BS analytical."""
+        bs = BlackScholesModel(sigma=HULL_SIGMA)
+        mc = MonteCarloEngine(n_paths=200_000, seed=42)
+        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
+
+        strikes = [90.0, 100.0, 110.0]
+        payoff_fns = [
+            lambda p, K=K: np.maximum(p[:, -1] - K, 0.0) for K in strikes
+        ]
+
+        results = mc.price_batch(payoff_fns, paths, HULL_R, HULL_T)
+
+        for K, result in zip(strikes, results):
+            bs_price = bs.price(HULL_S, K, HULL_T, HULL_R, 'call')
+            assert abs(result.price - bs_price) < 4 * result.std_error
+
+    def test_batch_empty_list(self):
+        """Empty payoff list returns empty results."""
+        mc = MonteCarloEngine(n_paths=100, seed=42)
+        paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=1)
+        results = mc.price_batch([], paths, 0.05, 1.0)
+        assert results == []

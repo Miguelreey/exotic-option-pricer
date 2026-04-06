@@ -7,6 +7,7 @@ Implements:
 - Antithetic variates: exploit symmetry of normal distribution to halve variance
 - Control variates: use correlated variable with known expectation to reduce variance
 - Combined antithetic + control variates
+- Importance sampling: drift shift for deep OTM options
 
 All functions are pure (no side effects, no state). They operate on NumPy arrays
 and are designed to compose with MonteCarloEngine.
@@ -21,6 +22,17 @@ without changing the rate, yielding equivalent accuracy at a fraction of the cos
         Cov[f(Z), f(-Z)] <= 0   (by FKG inequality / monotonicity argument)
     so Var[(f(Z) + f(-Z))/2] <= Var[f(Z)]/2.
     Typical reduction: 50-80% for vanilla calls/puts.
+
+**Importance sampling** (Glasserman, 2003, Ch. 4.6):
+    Shift the sampling distribution to increase the probability of
+    rare events (e.g., deep OTM options exercising). For GBM with
+    terminal payoff, the optimal drift shift theta centers the
+    terminal distribution at the strike:
+        theta* = (ln(K/S0) - (r-q)*T) / (sigma*sqrt(T))
+    Each payoff is corrected by the likelihood ratio:
+        L(Z) = exp(-theta*Z - theta^2/2)
+    where Z is the shifted sample. This preserves unbiasedness while
+    dramatically reducing variance for deep OTM/ITM options.
 
 **Control variates** (Glasserman, 2003, Ch. 4):
     Given payoff Y and control C with known E[C]:
@@ -184,3 +196,94 @@ def control_variate_adjust(
 
     adjusted = payoffs - beta * (control_values - control_expectation)
     return adjusted, float(beta)
+
+
+def importance_sampling_shift(
+    S0: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float = 0.0,
+) -> float:
+    """
+    Compute the optimal importance sampling drift shift for European options.
+
+    The shift theta centers the terminal price distribution around the
+    strike K under the sampling measure, maximizing the probability of
+    the option finishing in-the-money. This is most effective for deep
+    OTM options where standard MC produces mostly zero payoffs.
+
+    Parameters
+    ----------
+    S0 : float
+        Initial spot price.
+    K : float
+        Strike price.
+    T : float
+        Time to expiry in years.
+    r : float
+        Risk-free rate.
+    sigma : float
+        Annualized volatility.
+    q : float, default 0.0
+        Continuous dividend yield.
+
+    Returns
+    -------
+    float
+        Optimal drift shift theta. Positive for OTM calls (K > F),
+        negative for OTM puts (K < F), near zero for ATM.
+        Clamped to [-5, 5] for numerical stability.
+
+    Notes
+    -----
+    Under the shifted measure Q_theta, we sample Z ~ N(0,1) and compute:
+
+        S_T = S_0 * exp((r - q - sigma^2/2)*T + sigma*sqrt(T)*(Z + theta))
+
+    The likelihood ratio that corrects for the drift change is:
+
+        L(Z) = exp(-theta*(Z + theta) + theta^2/2) = exp(-theta*Z - theta^2/2)
+
+    where Z is the *original* (unshifted) standard normal. The corrected
+    estimator is:
+
+        V = e^{-rT} * (1/N) * sum payoff(S_T^(i)) * L(Z^(i))
+
+    The optimal theta satisfies E_theta[S_T] = K:
+
+        S_0 * exp((r-q)*T + sigma*theta*sqrt(T)) = K
+        theta = (ln(K/S_0) - (r-q)*T) / (sigma*sqrt(T))
+
+    References
+    ----------
+    .. [1] Glasserman (2003). Monte Carlo Methods in Financial Engineering, §4.6.
+    """
+    sqrt_T = np.sqrt(T)
+    theta = (np.log(K / S0) - (r - q) * T) / (sigma * sqrt_T)
+    return float(np.clip(theta, -5.0, 5.0))
+
+
+def importance_sampling_likelihood(
+    Z: np.ndarray,
+    theta: float,
+) -> np.ndarray:
+    """
+    Compute importance sampling likelihood ratios.
+
+    Parameters
+    ----------
+    Z : np.ndarray
+        Original standard normal samples (before shift).
+    theta : float
+        Drift shift applied to the samples.
+
+    Returns
+    -------
+    np.ndarray
+        Likelihood ratios exp(-theta*Z_shifted - theta^2/2) where
+        Z_shifted = Z + theta.
+    """
+    Z_shifted = Z + theta
+    return np.exp(-theta * Z_shifted + 0.5 * theta * theta)
