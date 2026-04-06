@@ -23,15 +23,22 @@ Color conventions (consistent throughout):
     rho     = #795548 (brown)
 """
 
+from __future__ import annotations
+
 import matplotlib
 
 matplotlib.use('Agg')  # Non-interactive backend: safe for servers and CI/CD
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+from models.black_scholes import BlackScholesModel
+
+if TYPE_CHECKING:
+    from src.engines.monte_carlo import MCResult
 
 try:
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -240,7 +247,7 @@ def plot_greek_vs_time(model, greek_name: str, S: float, K: float,
 
     greek_name_lower = greek_name.lower().strip()
     if greek_name_lower not in greek_methods:
-        raise RuntimeError(
+        raise ValueError(
             f"greek_name must be one of {list(greek_methods.keys())}. "
             f"Got: '{greek_name}'"
         )
@@ -527,8 +534,6 @@ def plot_implied_vol_smile(market_prices: List[Dict], S: float,
     -------
     tuple[Figure, Axes]
     """
-    from models.black_scholes import BlackScholesModel
-
     strikes = np.array([mp['K'] for mp in market_prices])
     prices = np.array([mp['price'] for mp in market_prices])
     ivs = np.array([
@@ -593,5 +598,197 @@ def plot_greeks_heatmap(model, greek_name: str,
     ax.axhline(y=K, color='white', linestyle='--', linewidth=1.0, alpha=0.7,
                label=f'ATM ($K={K}$)')
     ax.legend(fontsize=9, loc='upper right')
+    fig.tight_layout()
+    return fig, ax
+
+
+# ──────────────────────────────────────────────
+# Monte Carlo visualizations (Phase 2)
+# ──────────────────────────────────────────────
+
+COLORS_MC = {
+    'path':         '#90CAF9',
+    'mean':         '#1565C0',
+    'ci_fill':      '#1565C0',
+    'reference':    '#F44336',
+    'plain':        '#9E9E9E',
+    'antithetic':   '#4CAF50',
+    'control':      '#FF9800',
+    'combined':     '#9C27B0',
+    'slope_ref':    '#F44336',
+}
+
+
+def plot_mc_paths(
+    paths: np.ndarray,
+    T: float,
+    n_show: int = 50,
+    title: Optional[str] = None,
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Plot simulated GBM paths with mean and confidence band.
+
+    Parameters
+    ----------
+    paths : np.ndarray, shape (n_paths, n_steps + 1)
+        Simulated price paths from MonteCarloEngine.simulate_gbm().
+    T : float
+        Time horizon in years (for x-axis scaling).
+    n_show : int, default 50
+        Number of individual paths to display. Capped at n_paths.
+    title : str, optional
+        Custom plot title. If None, a default is generated.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+    """
+    n_paths, n_points = paths.shape
+    t_grid = np.linspace(0, T, n_points)
+    n_show = min(n_show, n_paths)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Individual paths (subsample for visual clarity)
+    indices = np.linspace(0, n_paths - 1, n_show, dtype=int)
+    for i in indices:
+        ax.plot(t_grid, paths[i], color=COLORS_MC['path'], linewidth=0.4, alpha=0.5)
+
+    # Mean path
+    mean_path = np.mean(paths, axis=0)
+    ax.plot(t_grid, mean_path, color=COLORS_MC['mean'], linewidth=2.2,
+            label='Mean path', zorder=5)
+
+    # 95% pointwise distribution band: mean +/- 1.96 * std(S_t)
+    # This shows the spread of individual paths, NOT the CI of the mean.
+    # For the CI of the mean, divide std by sqrt(n_paths).
+    std_path = np.std(paths, axis=0)
+    lower = mean_path - 1.96 * std_path
+    upper = mean_path + 1.96 * std_path
+    ax.fill_between(t_grid, lower, upper, color=COLORS_MC['ci_fill'],
+                    alpha=0.12, label=r'95% distribution band')
+
+    ax.set_xlabel('Time (years)', fontsize=12)
+    ax.set_ylabel('Price ($S$)', fontsize=12)
+    ax.set_title(
+        title or f'Monte Carlo GBM Paths ($N={n_paths:,}$, $S_0={paths[0, 0]:.0f}$)',
+        fontsize=13
+    )
+    ax.legend(fontsize=10, loc='upper left')
+    ax.set_xlim(0, T)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_mc_convergence(
+    path_counts: List[int],
+    std_errors: List[float],
+    errors: Optional[List[float]] = None,
+    reference_price: Optional[float] = None,
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Log-log plot of MC convergence: std_error and absolute error vs N.
+
+    Overlays the theoretical O(1/sqrt(N)) reference line.
+
+    Parameters
+    ----------
+    path_counts : list of int
+        Number of paths for each data point.
+    std_errors : list of float
+        Standard error at each path count.
+    errors : list of float, optional
+        Absolute error vs reference price at each path count.
+    reference_price : float, optional
+        If provided, annotated on the plot.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+    """
+    path_counts_arr = np.array(path_counts, dtype=float)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Standard error
+    ax.loglog(path_counts_arr, std_errors, 'o-', color=COLORS_MC['mean'],
+              linewidth=2.0, markersize=6, label='Std Error', zorder=3)
+
+    # Absolute error (if provided)
+    if errors is not None:
+        ax.loglog(path_counts_arr, errors, 's--', color=COLORS_MC['antithetic'],
+                  linewidth=1.5, markersize=5, label='|Error|', zorder=3)
+
+    # O(1/sqrt(N)) reference line
+    ref_y = std_errors[0] * np.sqrt(path_counts_arr[0])
+    theoretical = ref_y / np.sqrt(path_counts_arr)
+    ax.loglog(path_counts_arr, theoretical, ':', color=COLORS_MC['slope_ref'],
+              linewidth=1.5, alpha=0.7, label=r'$O(1/\sqrt{N})$')
+
+    if reference_price is not None:
+        ax.text(0.02, 0.02, f'Reference: ${reference_price:.4f}$',
+                transform=ax.transAxes, fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
+
+    ax.set_xlabel('Number of Paths ($N$)', fontsize=12)
+    ax.set_ylabel('Error / Std Error', fontsize=12)
+    ax.set_title('Monte Carlo Convergence', fontsize=13)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3, which='both')
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_variance_reduction_comparison(
+    results_dict: dict[str, MCResult],
+) -> Tuple[plt.Figure, plt.Axes]:
+    """
+    Horizontal bar chart comparing std_error across variance reduction methods.
+
+    Parameters
+    ----------
+    results_dict : dict of {str: MCResult}
+        Keys are method labels (e.g., 'Plain', 'Antithetic', 'Control',
+        'Antithetic + Control'). Values are MCResult instances.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+    """
+    labels = list(results_dict.keys())
+    se_values = [r.std_error for r in results_dict.values()]
+
+    color_map = {
+        'plain': COLORS_MC['plain'],
+        'antithetic': COLORS_MC['antithetic'],
+        'control': COLORS_MC['control'],
+        'antithetic+control': COLORS_MC['combined'],
+        'antithetic + control': COLORS_MC['combined'],
+    }
+    bar_colors = [
+        color_map.get(label.lower(), COLORS_MC['plain']) for label in labels
+    ]
+
+    fig, ax = plt.subplots(figsize=(10, max(3, len(labels) * 1.0 + 1)))
+    y_pos = np.arange(len(labels))
+    bars = ax.barh(y_pos, se_values, color=bar_colors, edgecolor='white', height=0.5)
+
+    # Annotate with variance ratio relative to first entry (plain)
+    if len(se_values) > 1:
+        base_var = se_values[0] ** 2
+        for i, (bar, se) in enumerate(zip(bars, se_values)):
+            ratio = se ** 2 / base_var if base_var > 0 else 0
+            if i > 0:
+                ax.text(bar.get_width() + max(se_values) * 0.02,
+                        bar.get_y() + bar.get_height() / 2,
+                        f'VR={ratio:.2%}', va='center', fontsize=9,
+                        fontweight='bold')
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=11)
+    ax.set_xlabel('Standard Error', fontsize=12)
+    ax.set_title('Variance Reduction Comparison', fontsize=13)
+    ax.grid(True, axis='x', alpha=0.3)
     fig.tight_layout()
     return fig, ax

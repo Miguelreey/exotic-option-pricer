@@ -241,5 +241,135 @@ class TestQuantLibBenchmark:
             )
 
 
+class TestMCBenchmark:
+    """Monte Carlo engine throughput benchmarks (Phase 2)."""
+
+    def test_simulate_gbm_exact_throughput(self):
+        """
+        Exact GBM simulation throughput: paths/sec.
+
+        100k paths × 1 step is the baseline for European pricing.
+        Must sustain > 1M paths/sec on modern hardware (vectorized
+        log-space cumsum, no Python loops).
+        """
+        from src.engines.monte_carlo import MonteCarloEngine
+
+        n_paths = 100_000
+        mc = MonteCarloEngine(n_paths=n_paths, n_steps=1, seed=42)
+
+        start = time.perf_counter()
+        mc.simulate_gbm(100.0, 1.0, 0.05, 0.20)
+        elapsed = time.perf_counter() - start
+
+        throughput = n_paths / elapsed
+        assert throughput > 500_000, (
+            f"Exact GBM throughput too low: {throughput:,.0f} paths/sec"
+        )
+
+    def test_simulate_gbm_multistep_throughput(self):
+        """
+        Multi-step GBM: 10k paths × 252 steps (full year daily).
+
+        Throughput measured as paths/sec (each path = 252 steps).
+        """
+        from src.engines.monte_carlo import MonteCarloEngine
+
+        n_paths = 10_000
+        mc = MonteCarloEngine(n_paths=n_paths, n_steps=252, seed=42)
+
+        start = time.perf_counter()
+        mc.simulate_gbm(100.0, 1.0, 0.05, 0.20)
+        elapsed = time.perf_counter() - start
+
+        throughput = n_paths / elapsed
+        assert throughput > 10_000, (
+            f"Multi-step GBM throughput too low: {throughput:,.0f} paths/sec"
+        )
+
+    def test_price_european_plain_throughput(self):
+        """
+        European option pricing throughput without variance reduction.
+
+        Measures options/sec for price_european (simulate + price pipeline).
+        """
+        from src.engines.monte_carlo import MonteCarloEngine
+
+        n_paths = 100_000
+        n_reps = 10
+        mc = MonteCarloEngine(n_paths=n_paths, seed=42)
+
+        start = time.perf_counter()
+        for _ in range(n_reps):
+            mc.price_european(100.0, 100.0, 1.0, 0.05, 0.20, 'call')
+        elapsed = time.perf_counter() - start
+
+        throughput = n_reps / elapsed
+        assert throughput > 5, (
+            f"European pricing throughput too low: {throughput:.1f} opts/sec "
+            f"(each with {n_paths:,} paths)"
+        )
+
+    def test_price_european_vr_throughput(self):
+        """
+        European pricing with antithetic + control variates.
+
+        VR should add < 2x overhead vs plain (not 10x).
+        """
+        from src.engines.monte_carlo import MonteCarloEngine
+
+        n_paths = 100_000
+        n_reps = 10
+
+        mc_plain = MonteCarloEngine(n_paths=n_paths, seed=42)
+        start_plain = time.perf_counter()
+        for _ in range(n_reps):
+            mc_plain.price_european(100.0, 100.0, 1.0, 0.05, 0.20, 'call')
+        time_plain = time.perf_counter() - start_plain
+
+        mc_vr = MonteCarloEngine(n_paths=n_paths, seed=42)
+        start_vr = time.perf_counter()
+        for _ in range(n_reps):
+            mc_vr.price_european(
+                100.0, 100.0, 1.0, 0.05, 0.20, 'call',
+                antithetic=True, control_variate=True,
+            )
+        time_vr = time.perf_counter() - start_vr
+
+        overhead = time_vr / time_plain
+        # Antithetic doubles path count, control adds covariance computation.
+        # Expected ~2-3x overhead. Allow 4x for OS scheduling jitter.
+        assert overhead < 4.0, (
+            f"VR overhead too high: {overhead:.1f}x (plain={time_plain:.3f}s, "
+            f"vr={time_vr:.3f}s)"
+        )
+
+    def test_exact_vs_milstein_throughput(self):
+        """
+        Vectorized Milstein should be within 2x of exact (both use cumsum).
+
+        Euler (Python loop) is expected to be much slower and is not
+        benchmarked here — it exists for validation, not production use.
+        """
+        from src.engines.monte_carlo import MonteCarloEngine
+
+        n_paths, n_steps = 50_000, 100
+
+        mc_exact = MonteCarloEngine(n_paths=n_paths, n_steps=n_steps, seed=42)
+        start = time.perf_counter()
+        mc_exact.simulate_gbm(100.0, 1.0, 0.05, 0.20, scheme='exact')
+        time_exact = time.perf_counter() - start
+
+        mc_mil = MonteCarloEngine(n_paths=n_paths, n_steps=n_steps, seed=42)
+        start = time.perf_counter()
+        mc_mil.simulate_gbm(100.0, 1.0, 0.05, 0.20, scheme='milstein')
+        time_mil = time.perf_counter() - start
+
+        ratio = time_mil / max(time_exact, 1e-9)
+        assert ratio < 2.5, (
+            f"Milstein is {ratio:.1f}x slower than exact "
+            f"(exact={time_exact:.4f}s, milstein={time_mil:.4f}s)"
+        )
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v', '--tb=short'])

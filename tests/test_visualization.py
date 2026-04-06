@@ -1,10 +1,5 @@
 """
 Exotic Option Pricer — tests/test_visualization.py
-Generado automáticamente. Turno inicial: 100
-"""
-
-"""
-Exotic Option Pricer - tests/test_visualization.py
 
 Smoke tests for the visualization module.
 Verifies all functions run without errors and return correct types.
@@ -84,7 +79,7 @@ class TestVisualizationOutputs:
             plt.close(fig)
 
     def test_plot_greek_vs_time_invalid(self, model, T_range):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError):
             plot_greek_vs_time(model, 'invalid', S=100, K=100, r=0.05, T_range=T_range)
 
     def test_plot_payoff_diagram(self, S_range):
@@ -163,9 +158,6 @@ class TestNewVisualizations:
 
     def test_plot_implied_vol_smile(self, model):
         """Generate synthetic market prices and plot smile."""
-        import os
-        import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
         strikes = [85, 90, 95, 100, 105, 110, 115]
         market_prices = [
             {'K': k, 'price': model.price(100, k, 1.0, 0.05, 'call')}
