@@ -358,6 +358,38 @@ class TestInputValidation:
         with pytest.raises(ValueError):
             bs.price(100.0, -10.0, 1.0, 0.05, 'call')
 
+    def test_inf_spot_raises(self, bs):
+        with pytest.raises(ValueError):
+            bs.price(np.inf, 100.0, 1.0, 0.05, 'call')
+
+    def test_nan_strike_raises(self, bs):
+        with pytest.raises(ValueError):
+            bs.price(100.0, np.nan, 1.0, 0.05, 'call')
+
+    def test_inf_time_raises(self, bs):
+        with pytest.raises(ValueError):
+            bs.price(100.0, 100.0, np.inf, 0.05, 'call')
+
+    def test_nan_sigma_raises(self):
+        with pytest.raises(ValueError):
+            BlackScholesModel(sigma=np.nan)
+
+    def test_inf_sigma_raises(self):
+        with pytest.raises(ValueError):
+            BlackScholesModel(sigma=np.inf)
+
+    def test_large_sigma_warns(self):
+        """sigma > 5.0 should emit a UserWarning suggesting decimal."""
+        with pytest.warns(UserWarning, match="unusually large"):
+            BlackScholesModel(sigma=20.0)
+
+    def test_shorthand_option_types(self, bs):
+        """'c' and 'p' shortcuts must work."""
+        assert np.isclose(bs.price(100, 100, 1.0, 0.05, 'c'),
+                          bs.price(100, 100, 1.0, 0.05, 'call'))
+        assert np.isclose(bs.price(100, 100, 1.0, 0.05, 'p'),
+                          bs.price(100, 100, 1.0, 0.05, 'put'))
+
 
 # ============================================================================
 # 12. Dividend Yield
@@ -463,6 +495,32 @@ class TestImpliedVol:
         with pytest.raises(ValueError):
             BlackScholesModel.implied_vol(101.0, 100, 100, 1.0, 0.05, 'call')
 
+    def test_roundtrip_deep_otm(self):
+        """Far-from-ATM uses asymptotic initial guess (sqrt(2|x|) / sqrt(T)).
+
+        Requires |x| = |ln(F/K)| >= 0.5 to trigger the far-from-ATM branch.
+        S=30, K=100 gives x ≈ -1.15.
+        """
+        bs = BlackScholesModel(sigma=0.40)
+        price = bs.price(30, 100, 1.0, 0.05, 'call')
+        iv = BlackScholesModel.implied_vol(price, 30, 100, 1.0, 0.05, 'call')
+        assert abs(iv - 0.40) < 1e-4
+
+    def test_roundtrip_deep_itm_put(self):
+        """Deep ITM put: |ln(F/K)| >> 0.5, exercises far-from-ATM branch."""
+        bs = BlackScholesModel(sigma=0.35)
+        price = bs.price(30, 100, 1.0, 0.05, 'put')
+        iv = BlackScholesModel.implied_vol(price, 30, 100, 1.0, 0.05, 'put')
+        assert abs(iv - 0.35) < 1e-4
+
+    def test_brent_fallback(self):
+        """Force Halley to fail by using max_iter=0, triggering Brent."""
+        bs = BlackScholesModel(sigma=0.20)
+        price = bs.price(100, 100, 1.0, 0.05, 'call')
+        iv = BlackScholesModel.implied_vol(price, 100, 100, 1.0, 0.05, 'call',
+                                           max_iter=0)
+        assert abs(iv - 0.20) < 1e-6
+
 
 # ============================================================================
 # 14. Second-Order Greeks (Finite Difference)
@@ -529,6 +587,40 @@ class TestSecondOrderGreeks:
             bs.volga(self.S, self.K, self.T, self.r, 'call'),
             bs.volga(self.S, self.K, self.T, self.r, 'put'), rtol=1e-12
         )
+
+    # --- Second-order Greeks with dividends (q > 0) ---
+
+    @pytest.mark.parametrize("q", [0.02, 0.05])
+    def test_vanna_fd_with_dividends(self, bs, q):
+        """Vanna = dVega/dS with continuous dividend yield."""
+        h = 0.01
+        fd = (bs.vega(self.S+h, self.K, self.T, self.r, 'call', q=q)
+              - bs.vega(self.S-h, self.K, self.T, self.r, 'call', q=q)) / (2*h)
+        assert abs(fd - bs.vanna(self.S, self.K, self.T, self.r, 'call', q=q)) < 1e-4
+
+    @pytest.mark.parametrize("q", [0.02, 0.05])
+    def test_charm_fd_with_dividends(self, bs, q):
+        """Charm = dDelta/dt with continuous dividend yield."""
+        h = 1.0 / 365.0
+        fd = (bs.delta(self.S, self.K, self.T-h, self.r, 'call', q=q)
+              - bs.delta(self.S, self.K, self.T, self.r, 'call', q=q)) / h
+        assert abs(fd - bs.charm(self.S, self.K, self.T, self.r, 'call', q=q)) < 0.01
+
+    @pytest.mark.parametrize("q", [0.02, 0.05])
+    def test_speed_fd_with_dividends(self, bs, q):
+        """Speed = dGamma/dS with continuous dividend yield."""
+        h = 0.01
+        fd = (bs.gamma(self.S+h, self.K, self.T, self.r, 'call', q=q)
+              - bs.gamma(self.S-h, self.K, self.T, self.r, 'call', q=q)) / (2*h)
+        assert abs(fd - bs.speed(self.S, self.K, self.T, self.r, 'call', q=q)) < 1e-6
+
+    @pytest.mark.parametrize("q", [0.02, 0.05])
+    def test_color_fd_with_dividends(self, bs, q):
+        """Color = -dGamma/dT with continuous dividend yield."""
+        h = 1.0 / 365.0
+        fd = -(bs.gamma(self.S, self.K, self.T-h, self.r, 'call', q=q)
+               - bs.gamma(self.S, self.K, self.T, self.r, 'call', q=q)) / h
+        assert abs(fd - bs.color(self.S, self.K, self.T, self.r, 'call', q=q)) < 0.001
 
 
 # ============================================================================
@@ -702,6 +794,84 @@ class TestBatchGreeks:
                          'vanna', 'volga', 'charm', 'speed', 'zomma', 'color',
                          'dual_delta', 'dual_gamma', 'probability_itm', 'elasticity'}
         assert expected_keys == set(g.keys())
+
+
+# ============================================================================
+# 19. Elasticity
+# ============================================================================
+class TestElasticity:
+    """Lambda = Delta * S / V."""
+
+    def test_elasticity_call_atm(self, bs):
+        e = bs.elasticity(100, 100, 1.0, 0.05, 'call')
+        delta = bs.delta(100, 100, 1.0, 0.05, 'call')
+        price = bs.price(100, 100, 1.0, 0.05, 'call')
+        assert np.isclose(e, delta * 100.0 / price, rtol=1e-12)
+
+    def test_elasticity_deep_otm_is_nan(self, bs):
+        """Deep OTM: price ≈ 0 -> elasticity is NaN (division by zero)."""
+        e = bs.elasticity(10, 1000, 0.01, 0.05, 'call')
+        assert np.isnan(e)
+
+    def test_elasticity_leverage_positive(self, bs):
+        """Call elasticity > 1 (leveraged exposure)."""
+        e = bs.elasticity(100, 100, 1.0, 0.05, 'call')
+        assert e > 1.0
+
+
+# ============================================================================
+# 20. Dual Greeks with Dividends (FD)
+# ============================================================================
+class TestDualGreeksDividends:
+
+    S, K, T, r = 100.0, 100.0, 1.0, 0.05
+
+    @pytest.mark.parametrize("q", [0.02, 0.05])
+    def test_dual_delta_fd_with_dividends(self, bs, q):
+        h = 0.01
+        fd = (bs.price(self.S, self.K+h, self.T, self.r, 'call', q=q)
+              - bs.price(self.S, self.K-h, self.T, self.r, 'call', q=q)) / (2*h)
+        assert abs(fd - bs.dual_delta(self.S, self.K, self.T, self.r, 'call', q=q)) < 1e-6
+
+    @pytest.mark.parametrize("q", [0.02, 0.05])
+    def test_dual_gamma_fd_with_dividends(self, bs, q):
+        h = 0.01
+        fd = (bs.price(self.S, self.K+h, self.T, self.r, 'call', q=q)
+              - 2*bs.price(self.S, self.K, self.T, self.r, 'call', q=q)
+              + bs.price(self.S, self.K-h, self.T, self.r, 'call', q=q)) / h**2
+        assert abs(fd - bs.dual_gamma(self.S, self.K, self.T, self.r, 'call', q=q)) < 1e-4
+
+
+# ============================================================================
+# 21. Model Identity
+# ============================================================================
+class TestModelIdentity:
+    """__repr__, __eq__, __hash__ for interoperability."""
+
+    def test_repr(self):
+        bs = BlackScholesModel(sigma=0.20)
+        assert repr(bs) == "BlackScholesModel(sigma=0.2)"
+
+    def test_eq_same_sigma(self):
+        assert BlackScholesModel(sigma=0.20) == BlackScholesModel(sigma=0.20)
+
+    def test_eq_different_sigma(self):
+        assert BlackScholesModel(sigma=0.20) != BlackScholesModel(sigma=0.30)
+
+    def test_eq_different_type(self):
+        assert BlackScholesModel(sigma=0.20) != "not a model"
+
+    def test_hash_consistency(self):
+        """Equal objects must have equal hashes (dict/set compatibility)."""
+        a = BlackScholesModel(sigma=0.20)
+        b = BlackScholesModel(sigma=0.20)
+        assert hash(a) == hash(b)
+
+    def test_usable_as_dict_key(self):
+        bs1 = BlackScholesModel(sigma=0.20)
+        bs2 = BlackScholesModel(sigma=0.30)
+        d = {bs1: "vol_20", bs2: "vol_30"}
+        assert d[BlackScholesModel(sigma=0.20)] == "vol_20"
 
 
 if __name__ == '__main__':

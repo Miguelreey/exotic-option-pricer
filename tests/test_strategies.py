@@ -1,10 +1,5 @@
 """
 Exotic Option Pricer — tests/test_strategies.py
-Generado automáticamente. Turno inicial: 100
-"""
-
-"""
-Exotic Option Pricer - tests/test_strategies.py
 
 Test suite for option strategy properties under Black-Scholes.
 
@@ -97,18 +92,30 @@ class TestStrategyGreeks:
         assert np.all(payoff <= (K2 - K1) + 1e-14)
 
     def test_greeks_linear_additivity(self, model, base_params):
-        """Portfolio Greeks = sum of weighted individual Greeks."""
+        """Portfolio delta via FD matches sum of analytical leg deltas.
+
+        Computes the portfolio value V(S) = 2*Call(S,K1) + 1*Put(S,K2),
+        then verifies dV/dS via central FD equals the sum of individual
+        analytical deltas. This tests that Greeks are truly additive
+        across a multi-leg portfolio.
+        """
         S, T, r = base_params['S'], base_params['T'], base_params['r']
         K_call, K_put = 100.0, 95.0
         qty_call, qty_put = 2.0, 1.0
 
-        for greek_name in ('delta', 'gamma', 'vega', 'theta', 'rho'):
-            method = getattr(model, greek_name)
-            portfolio = (qty_call * method(S, K_call, T, r, 'call')
-                         + qty_put * method(S, K_put, T, r, 'put'))
-            expected = (qty_call * method(S, K_call, T, r, 'call')
-                        + qty_put * method(S, K_put, T, r, 'put'))
-            assert np.isclose(portfolio, expected, rtol=1e-14)
+        def portfolio_value(spot):
+            return (qty_call * model.price(spot, K_call, T, r, 'call')
+                    + qty_put * model.price(spot, K_put, T, r, 'put'))
+
+        # FD portfolio delta
+        h = 0.01
+        fd_delta = (portfolio_value(S + h) - portfolio_value(S - h)) / (2 * h)
+
+        # Analytical portfolio delta (sum of legs)
+        analytical_delta = (qty_call * model.delta(S, K_call, T, r, 'call')
+                            + qty_put * model.delta(S, K_put, T, r, 'put'))
+
+        assert abs(fd_delta - analytical_delta) < 1e-6
 
     def test_put_call_parity_portfolio(self, model, base_params):
         """C - P = S - K*exp(-rT) to machine precision."""
