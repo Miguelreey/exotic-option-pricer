@@ -192,5 +192,71 @@ class TestNewVisualizations:
         plt.close(fig)
 
 
+class TestExoticVisualizations:
+    """Smoke tests for Phase 3 exotic visualization functions."""
+
+    def test_plot_exotic_payoff_asian(self):
+        from src.instruments.asian import AsianOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
+        fig, axes = plot_exotic_payoff(asian, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        assert axes.shape == (2,)
+        plt.close(fig)
+
+    def test_plot_exotic_payoff_barrier(self):
+        from src.instruments.barrier import BarrierOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        barrier = BarrierOption(K=100, barrier=120, barrier_type='up-and-out')
+        fig, axes = plot_exotic_payoff(barrier, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_exotic_payoff_lookback(self):
+        from src.instruments.lookback import LookbackOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        lookback = LookbackOption(option_type='call', strike_type='floating')
+        fig, axes = plot_exotic_payoff(lookback, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_exotic_payoff_digital(self):
+        from src.instruments.digital import DigitalOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        digital = DigitalOption(K=100, option_type='call', payout_type='cash')
+        fig, axes = plot_exotic_payoff(digital, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_exotic_comparison(self):
+        from src.engines.monte_carlo import MonteCarloEngine
+        from src.instruments.asian import AsianOption
+        from src.instruments.digital import DigitalOption
+        from src.utils.visualization import plot_exotic_comparison
+
+        mc = MonteCarloEngine(n_paths=5_000, seed=42)
+        paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=50)
+
+        asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
+        digital = DigitalOption(K=100, option_type='call', payout_type='cash')
+
+        r_asian = mc.price(asian.payoff, paths, 0.05, 1.0)
+        r_digital = mc.price(digital.payoff, paths, 0.05, 1.0)
+
+        results = {'Asian call': r_asian, 'Digital call': r_digital}
+        fig, axes = plot_exotic_comparison(results, reference=5.0)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        assert axes.shape == (2, 2)
+        plt.close(fig)
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v', '--tb=short'])
