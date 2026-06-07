@@ -808,6 +808,7 @@ COLORS_EXOTIC = {
     'barrier':     '#F44336',
     'max':         '#9C27B0',
     'min':         '#00BCD4',
+    'average':     '#6A1B9A',
     'payoff_fill': '#FF5722',
     'mean':        '#1565C0',
     'reference':   '#F44336',
@@ -887,7 +888,6 @@ def plot_exotic_payoff(
     K = getattr(exotic, 'K', None)
     barrier = getattr(exotic, 'barrier', None)
     barrier_type = getattr(exotic, 'barrier_type', None)
-    strike_type = getattr(exotic, 'strike_type', None)
     option_type = getattr(exotic, 'option_type', 'call')
 
     display_idx = np.linspace(0, n_paths_hist - 1, n_paths_show, dtype=int)
@@ -932,8 +932,11 @@ def plot_exotic_payoff(
             barrier, color=COLORS_EXOTIC['barrier'], linewidth=1.8,
             linestyle='-.', label=f'Barrier $H={barrier:g}$', zorder=4,
         )
-    if strike_type is not None:
-        sample_path = paths[display_idx[0]]
+    from src.instruments.asian import AsianOption  # lazy: avoid cycles
+    from src.instruments.lookback import LookbackOption  # lazy: avoid cycles
+
+    sample_path = paths[display_idx[0]]
+    if isinstance(exotic, LookbackOption):
         running_max = np.maximum.accumulate(sample_path)
         running_min = np.minimum.accumulate(sample_path)
         ax_paths.plot(
@@ -943,6 +946,19 @@ def plot_exotic_payoff(
         ax_paths.plot(
             t_grid, running_min, color=COLORS_EXOTIC['min'], linewidth=1.4,
             linestyle=':', alpha=0.85, label='Running min (sample)',
+        )
+    elif isinstance(exotic, AsianOption):
+        fixings = sample_path[1:]  # exclude S_0 from the average, as the payoff does
+        n_fixings = np.arange(1, fixings.size + 1)
+        if exotic.avg_type == 'geometric':
+            running_avg = np.exp(np.cumsum(np.log(fixings)) / n_fixings)
+            avg_label = 'Running geo. avg (sample)'
+        else:
+            running_avg = np.cumsum(fixings) / n_fixings
+            avg_label = 'Running avg (sample)'
+        ax_paths.plot(
+            t_grid[1:], running_avg, color=COLORS_EXOTIC['average'], linewidth=1.4,
+            linestyle=':', alpha=0.85, label=avg_label,
         )
 
     ax_paths.set_xlabel('Time (years)', fontsize=12)

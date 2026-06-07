@@ -161,7 +161,7 @@ class DigitalOption(ExoticOption):
         if cash_amount < 0:
             raise ValueError(f"cash_amount must be >= 0, got {cash_amount}")
 
-        self.K = K
+        self.K = float(K)
         self._option_type = opt
         self._payout_type = pay
         self.cash_amount = cash_amount
