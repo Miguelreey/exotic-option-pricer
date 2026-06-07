@@ -35,10 +35,11 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 
-from models.black_scholes import BlackScholesModel
+from src.models.black_scholes import BlackScholesModel
 
 if TYPE_CHECKING:
     from src.engines.monte_carlo import MCResult
+    from src.instruments.base import ExoticOption
 
 try:
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -792,3 +793,341 @@ def plot_variance_reduction_comparison(
     ax.grid(True, axis='x', alpha=0.3)
     fig.tight_layout()
     return fig, ax
+
+
+# ──────────────────────────────────────────────
+# Exotic option visualizations (Phase 3)
+# ──────────────────────────────────────────────
+
+COLORS_EXOTIC = {
+    'path':        '#90CAF9',
+    'path_itm':    '#4CAF50',
+    'path_otm':    '#B0BEC5',
+    'path_ko':     '#F44336',
+    'strike':      '#FF9800',
+    'barrier':     '#F44336',
+    'max':         '#9C27B0',
+    'min':         '#00BCD4',
+    'average':     '#6A1B9A',
+    'payoff_fill': '#FF5722',
+    'mean':        '#1565C0',
+    'reference':   '#F44336',
+}
+
+
+def plot_exotic_payoff(
+    exotic: 'ExoticOption',
+    S0: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float = 0.0,
+    n_paths_show: int = 40,
+    n_steps: int = 252,
+    seed: int = 42,
+    title: Optional[str] = None,
+) -> Tuple[plt.Figure, np.ndarray]:
+    """
+    Two-panel diagram illustrating the path-dependence of an exotic payoff.
+
+    Left panel shows simulated GBM paths with instrument-specific overlays
+    (strike, barrier level, running max/min) so the reader can see WHICH
+    feature of the path drives the payoff. Right panel is the empirical
+    distribution of terminal payoffs over a larger MC sample.
+
+    Parameters
+    ----------
+    exotic : ExoticOption
+        Any subclass of ``src.instruments.base.ExoticOption`` — must expose
+        ``payoff(paths: np.ndarray) -> np.ndarray``. The function discovers
+        contract attributes (``K``, ``barrier``, ``lookback_type``,
+        ``option_type``) reflectively, so it works uniformly for Asian,
+        Barrier, Lookback and Digital.
+    S0, T, r, sigma, q : float
+        Market parameters for the underlying GBM.
+    n_paths_show : int, default 40
+        Number of paths to display in the left panel.
+    n_steps : int, default 252
+        Time discretization (daily monitoring by default).
+    seed : int, default 42
+        RNG seed — reproducible across calls.
+    title : str, optional
+        Overrides the auto-generated title.
+
+    Returns
+    -------
+    tuple[Figure, np.ndarray[Axes]]
+        A figure with two axes (left: paths, right: payoff histogram).
+
+    Notes
+    -----
+    The histogram uses a **larger** path count (``max(5 * n_paths_show,
+    5000)``) than the panel display, so the distribution is smooth even
+    when only 40 paths are plotted.
+    """
+    from src.engines.monte_carlo import MonteCarloEngine  # lazy: avoid cycles
+
+    if S0 <= 0 or T <= 0 or sigma <= 0:
+        raise ValueError(
+            f'Invalid market parameters: S0={S0}, T={T}, sigma={sigma} '
+            '(all must be strictly positive).'
+        )
+
+    n_paths_hist = max(5 * n_paths_show, 5_000)
+    engine = MonteCarloEngine(n_paths=n_paths_hist, seed=seed)
+    paths = engine.simulate_gbm(
+        S0=S0, T=T, r=r, sigma=sigma, q=q, n_steps=n_steps,
+    )
+    payoffs = exotic.payoff(paths)
+
+    t_grid = np.linspace(0.0, T, paths.shape[1])
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    ax_paths, ax_hist = axes
+
+    K = getattr(exotic, 'K', None)
+    barrier = getattr(exotic, 'barrier', None)
+    barrier_type = getattr(exotic, 'barrier_type', None)
+    option_type = getattr(exotic, 'option_type', 'call')
+
+    display_idx = np.linspace(0, n_paths_hist - 1, n_paths_show, dtype=int)
+
+    for idx in display_idx:
+        path = paths[idx]
+        color = COLORS_EXOTIC['path']
+
+        if barrier is not None:
+            knocked = False
+            if barrier_type and 'up' in barrier_type:
+                knocked = np.max(path) >= barrier
+            elif barrier_type and 'down' in barrier_type:
+                knocked = np.min(path) <= barrier
+            knock_out = barrier_type and 'out' in barrier_type
+            if knocked and knock_out:
+                color = COLORS_EXOTIC['path_ko']
+            elif knocked and not knock_out:
+                color = COLORS_EXOTIC['path_itm']
+            else:
+                color = COLORS_EXOTIC['path_otm']
+        elif K is not None and option_type in ('call', 'put'):
+            terminal = path[-1]
+            itm = (terminal > K) if option_type == 'call' else (terminal < K)
+            color = COLORS_EXOTIC['path_itm'] if itm else COLORS_EXOTIC['path_otm']
+
+        ax_paths.plot(t_grid, path, color=color, linewidth=0.9, alpha=0.7)
+
+    ax_paths.plot(
+        t_grid, np.mean(paths[display_idx], axis=0),
+        color=COLORS_EXOTIC['mean'], linewidth=2.2, label='Displayed mean',
+        zorder=5,
+    )
+
+    if K is not None:
+        ax_paths.axhline(
+            K, color=COLORS_EXOTIC['strike'], linewidth=1.6, linestyle='--',
+            label=f'Strike $K={K:g}$', zorder=4,
+        )
+    if barrier is not None:
+        ax_paths.axhline(
+            barrier, color=COLORS_EXOTIC['barrier'], linewidth=1.8,
+            linestyle='-.', label=f'Barrier $H={barrier:g}$', zorder=4,
+        )
+    from src.instruments.asian import AsianOption  # lazy: avoid cycles
+    from src.instruments.lookback import LookbackOption  # lazy: avoid cycles
+
+    sample_path = paths[display_idx[0]]
+    if isinstance(exotic, LookbackOption):
+        running_max = np.maximum.accumulate(sample_path)
+        running_min = np.minimum.accumulate(sample_path)
+        ax_paths.plot(
+            t_grid, running_max, color=COLORS_EXOTIC['max'], linewidth=1.4,
+            linestyle=':', alpha=0.85, label='Running max (sample)',
+        )
+        ax_paths.plot(
+            t_grid, running_min, color=COLORS_EXOTIC['min'], linewidth=1.4,
+            linestyle=':', alpha=0.85, label='Running min (sample)',
+        )
+    elif isinstance(exotic, AsianOption):
+        fixings = sample_path[1:]  # exclude S_0 from the average, as the payoff does
+        n_fixings = np.arange(1, fixings.size + 1)
+        if exotic.avg_type == 'geometric':
+            running_avg = np.exp(np.cumsum(np.log(fixings)) / n_fixings)
+            avg_label = 'Running geo. avg (sample)'
+        else:
+            running_avg = np.cumsum(fixings) / n_fixings
+            avg_label = 'Running avg (sample)'
+        ax_paths.plot(
+            t_grid[1:], running_avg, color=COLORS_EXOTIC['average'], linewidth=1.4,
+            linestyle=':', alpha=0.85, label=avg_label,
+        )
+
+    ax_paths.set_xlabel('Time (years)', fontsize=12)
+    ax_paths.set_ylabel('Underlying price $S_t$', fontsize=12)
+    ax_paths.set_xlim(0.0, T)
+    ax_paths.grid(True, alpha=0.3)
+    ax_paths.legend(fontsize=9, loc='best')
+
+    positive = payoffs[payoffs > 0]
+    zero_frac = float(np.mean(payoffs <= 0.0))
+
+    if positive.size > 0:
+        ax_hist.hist(
+            positive, bins=40, color=COLORS_EXOTIC['payoff_fill'],
+            edgecolor='white', alpha=0.85,
+        )
+        mean_payoff = float(np.mean(payoffs))
+        ax_hist.axvline(
+            mean_payoff, color=COLORS_EXOTIC['mean'], linewidth=2.0,
+            linestyle='--',
+            label=f'Mean payoff $={mean_payoff:.4f}$',
+        )
+        ax_hist.legend(fontsize=10, loc='upper right')
+    else:
+        ax_hist.text(
+            0.5, 0.5, 'All payoffs are zero',
+            ha='center', va='center', transform=ax_hist.transAxes,
+            fontsize=12, color='#888',
+        )
+
+    ax_hist.set_xlabel('Payoff at maturity', fontsize=12)
+    ax_hist.set_ylabel('Frequency (positive payoffs)', fontsize=12)
+    ax_hist.set_title(
+        f'Terminal payoff distribution '
+        f'(P[payoff=0] = {zero_frac:.1%}, N = {n_paths_hist:,})',
+        fontsize=12,
+    )
+    ax_hist.grid(True, alpha=0.3)
+
+    exotic_name = type(exotic).__name__
+    fig.suptitle(
+        title or f'{exotic_name} — path-dependence diagnostic',
+        fontsize=14, fontweight='bold',
+    )
+    fig.tight_layout()
+    return fig, axes
+
+
+def plot_exotic_comparison(
+    results: Dict[str, 'MCResult'],
+    reference: Optional[float] = None,
+    title: Optional[str] = None,
+) -> Tuple[plt.Figure, np.ndarray]:
+    """
+    Four-panel side-by-side comparison of multiple exotic pricings.
+
+    Useful as a README asset and as a diagnostic when sweeping methods
+    (plain MC, antithetic, control variate, analytical) across several
+    exotic instruments.
+
+    Parameters
+    ----------
+    results : dict[str, MCResult]
+        Ordered mapping of label -> MCResult. The first entry is used as
+        the variance-ratio baseline. Labels are shown verbatim on every
+        axis.
+    reference : float, optional
+        If provided, drawn as a horizontal line on the price panel (useful
+        to cross-check MC against an analytical value).
+    title : str, optional
+        Overrides the auto-generated figure suptitle.
+
+    Returns
+    -------
+    tuple[Figure, np.ndarray[Axes]]
+        2x2 grid of axes: [price, std_error, variance ratio, 95% CI width].
+
+    Notes
+    -----
+    ``MCResult`` is expected to expose at least ``price`` and
+    ``std_error``. The variance ratio compares ``std_error**2`` of each
+    entry to the first one (baseline). The CI width panel uses
+    ``1.96 * std_error`` as a two-sided 95% half-width.
+    """
+    if not results:
+        raise ValueError('results must contain at least one entry.')
+
+    labels = list(results.keys())
+    prices = np.array([r.price for r in results.values()], dtype=float)
+    se = np.array([r.std_error for r in results.values()], dtype=float)
+    base_var = se[0] ** 2
+    var_ratio = (se ** 2) / base_var if base_var > 0 else np.zeros_like(se)
+    ci95_half = 1.96 * se
+
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9))
+    x_pos = np.arange(len(labels))
+    palette = [
+        '#2196F3', '#4CAF50', '#FF9800', '#9C27B0',
+        '#00BCD4', '#F44336', '#795548', '#607D8B',
+    ]
+    colors = [palette[i % len(palette)] for i in range(len(labels))]
+
+    ax = axes[0, 0]
+    bars = ax.bar(
+        x_pos, prices, yerr=ci95_half, color=colors, edgecolor='white',
+        capsize=5, error_kw={'elinewidth': 1.2, 'ecolor': '#333'},
+    )
+    for bar, price in zip(bars, prices):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(), f'{price:.4f}',
+            ha='center', va='bottom', fontsize=9, fontweight='bold',
+        )
+    if reference is not None:
+        ax.axhline(
+            reference, color=COLORS_EXOTIC['reference'], linewidth=1.6,
+            linestyle='--', label=f'Reference $={reference:.4f}$',
+        )
+        ax.legend(fontsize=9, loc='best')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(labels, rotation=25, ha='right', fontsize=10)
+    ax.set_ylabel('Price (with 95% CI)', fontsize=11)
+    ax.set_title('Exotic price', fontsize=12, fontweight='bold')
+    ax.grid(True, axis='y', alpha=0.3)
+
+    ax = axes[0, 1]
+    ax.bar(x_pos, se, color=colors, edgecolor='white')
+    for i, value in enumerate(se):
+        ax.text(
+            i, value, f'{value:.2e}',
+            ha='center', va='bottom', fontsize=9,
+        )
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(labels, rotation=25, ha='right', fontsize=10)
+    ax.set_ylabel('Standard error', fontsize=11)
+    ax.set_title('Monte Carlo noise', fontsize=12, fontweight='bold')
+    ax.grid(True, axis='y', alpha=0.3)
+
+    ax = axes[1, 0]
+    ax.bar(x_pos, var_ratio, color=colors, edgecolor='white')
+    for i, value in enumerate(var_ratio):
+        ax.text(
+            i, value, f'{value:.2%}',
+            ha='center', va='bottom', fontsize=9,
+        )
+    ax.axhline(1.0, color='#888', linewidth=1.0, linestyle=':')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(labels, rotation=25, ha='right', fontsize=10)
+    ax.set_ylabel(f'Var ratio vs "{labels[0]}"', fontsize=11)
+    ax.set_title('Variance reduction', fontsize=12, fontweight='bold')
+    ax.grid(True, axis='y', alpha=0.3)
+
+    ax = axes[1, 1]
+    ax.barh(x_pos, ci95_half, color=colors, edgecolor='white')
+    for i, value in enumerate(ci95_half):
+        ax.text(
+            value, i, f' {value:.2e}',
+            va='center', fontsize=9,
+        )
+    ax.set_yticks(x_pos)
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_xlabel('95% CI half-width (1.96 x SE)', fontsize=11)
+    ax.set_title('Interval precision', fontsize=12, fontweight='bold')
+    ax.invert_yaxis()
+    ax.grid(True, axis='x', alpha=0.3)
+
+    fig.suptitle(
+        title or 'Exotic pricing comparison',
+        fontsize=14, fontweight='bold',
+    )
+    fig.tight_layout()
+    return fig, axes

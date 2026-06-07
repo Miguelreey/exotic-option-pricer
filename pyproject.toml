@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "exotic-option-pricer"
-version = "2.0.0"
-description = "Production-grade exotic option pricing library: BS-Merton analytical + Monte Carlo engine with variance reduction"
+version = "3.0.0"
+description = "Production-grade exotic option pricing library: BS-Merton analytical, Monte Carlo with variance reduction, Asian/Barrier/Lookback/Digital exotics, numerical Greeks"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -22,6 +22,12 @@ keywords = [
     "option-pricing",
     "monte-carlo",
     "variance-reduction",
+    "exotic-options",
+    "asian-options",
+    "barrier-options",
+    "lookback-options",
+    "digital-options",
+    "path-dependent",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
