@@ -5,6 +5,7 @@ Production-grade Monte Carlo pricing engine for European and exotic derivatives.
 
 Implements:
 - GBM simulation: exact (log-space), Euler-Maruyama, Milstein
+- Heston simulation: Andersen (2008) Quadratic-Exponential (QE) scheme
 - Quasi-Monte Carlo: scrambled Sobol sequences for O(1/N) convergence
 - European option pricing with cross-validation against BS analytical
 - Generic payoff pricing (extensible to any path-dependent derivative)
@@ -14,9 +15,10 @@ Implements:
 - Convergence analysis with statistical diagnostics
 - Reproducible results via numpy.random.Generator (not legacy global state)
 
-The engine is designed to be the workhorse for Phases 3-5:
+The engine is the workhorse for Phases 3-5:
 - Phase 3: Exotic payoff functions plug into price() via payoff_fn
-- Phase 4: Heston paths replace simulate_gbm() with simulate_heston()
+- Phase 4: simulate_heston() feeds the same price() / exotic payoffs,
+  so every Phase 3 instrument prices under stochastic volatility unchanged
 - Phase 5: Rough Bergomi paths via fractional Brownian motion
 
 Mathematical Background
@@ -56,6 +58,8 @@ References
 .. [2] Kloeden & Platen (1992). Numerical Solution of SDEs.
 .. [3] Hull (2018). Options, Futures & Other Derivatives, 10th ed. Ch. 21.
 .. [4] Jaeckel (2002). Monte Carlo Methods in Finance. Wiley.
+.. [5] Andersen (2008). Simple and Efficient Simulation of the Heston
+       Stochastic Volatility Model. J. Computational Finance 11(3), 1-42.
 """
 
 from __future__ import annotations
@@ -493,6 +497,332 @@ class MonteCarloEngine:
         return self._build_paths_from_normals(
             S0, T, r, sigma, q, scheme, Z, absorb=absorb,
         )
+
+    # ──────────────────────────────────────────────
+    # Heston simulation — Andersen (2008) QE scheme
+    # ──────────────────────────────────────────────
+
+    @overload
+    def simulate_heston(
+        self,
+        S0: float,
+        v0: float,
+        T: float,
+        r: float,
+        kappa: float,
+        theta: float,
+        xi: float,
+        rho: float,
+        q: float = ...,
+        *,
+        n_steps: int | None = ...,
+        psi_c: float = ...,
+        martingale_correction: bool = ...,
+        return_variance: Literal[False] = ...,
+    ) -> np.ndarray: ...
+
+    @overload
+    def simulate_heston(
+        self,
+        S0: float,
+        v0: float,
+        T: float,
+        r: float,
+        kappa: float,
+        theta: float,
+        xi: float,
+        rho: float,
+        q: float = ...,
+        *,
+        n_steps: int | None = ...,
+        psi_c: float = ...,
+        martingale_correction: bool = ...,
+        return_variance: Literal[True],
+    ) -> tuple[np.ndarray, np.ndarray]: ...
+
+    def simulate_heston(
+        self,
+        S0: float,
+        v0: float,
+        T: float,
+        r: float,
+        kappa: float,
+        theta: float,
+        xi: float,
+        rho: float,
+        q: float = 0.0,
+        *,
+        n_steps: int | None = None,
+        psi_c: float = 1.5,
+        martingale_correction: bool = True,
+        return_variance: bool = False,
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+        """
+        Simulate Heston paths under Q with the Andersen (2008) QE scheme.
+
+            dS = (r - q) S dt + sqrt(v) S dW^S
+            dv = kappa (theta - v) dt + xi sqrt(v) dW^v,   d<W^S, W^v> = rho dt
+
+        The variance is a CIR process: Euler discretization produces v < 0
+        (breaking sqrt(v)) with nonzero probability, and "full truncation"
+        (v+) introduces bias. The Quadratic-Exponential scheme instead
+        samples v_{t+dt} from a distribution matched to the **exact** first
+        two conditional moments of the CIR transition:
+
+            m   = theta + (v_t - theta) e^{-kappa dt}
+            s^2 = (v_t xi^2 e^{-kappa dt}/kappa)(1 - e^{-kappa dt})
+                  + (theta xi^2 / (2 kappa))(1 - e^{-kappa dt})^2
+            psi = s^2 / m^2
+
+        switching at psi_c between a quadratic branch (psi <= psi_c, high
+        variance regime):
+
+            b^2 = 2/psi - 1 + sqrt(2/psi) sqrt(2/psi - 1),  a = m/(1 + b^2)
+            v_next = a (b + Z_v)^2,   Z_v ~ N(0,1)
+
+        and an exponential branch (psi > psi_c, near-zero variance — exact
+        mass at zero, essential when the Feller condition is violated):
+
+            p = (psi - 1)/(psi + 1),   beta = (1 - p)/m
+            v_next = 0                      if U_v <= p
+                     ln((1-p)/(1-U_v))/beta otherwise,   U_v ~ U(0,1)
+
+        The log-spot update (Andersen's martingale-consistent scheme with
+        central weights gamma_1 = gamma_2 = 1/2):
+
+            ln S_next = ln S + (r-q) dt + K0 + K1 v + K2 v_next
+                        + sqrt(K3 v + K4 v_next) Z,    Z ~ N(0,1), Z ⊥ (Z_v, U_v)
+
+            K0 = -rho kappa theta dt / xi
+            K1 = dt/2 (kappa rho / xi - 1/2) - rho/xi
+            K2 = dt/2 (kappa rho / xi - 1/2) + rho/xi
+            K3 = K4 = dt (1 - rho^2) / 2
+
+        The spot-vol correlation enters **through K1, K2** (which weight v_t
+        and v_{t+dt} in the drift), not by correlating Z with Z_v — this is
+        Andersen's key construction and the #1 implementation error.
+
+        Parameters
+        ----------
+        S0 : float
+            Initial spot price. Must be > 0.
+        v0 : float
+            Initial instantaneous variance. Must be > 0.
+        T : float
+            Time horizon in years. Must be > 0.
+        r : float
+            Risk-free rate (annualized, continuous compounding).
+        kappa : float
+            Variance mean-reversion speed. Must be > 0.
+        theta : float
+            Long-run variance level. Must be > 0.
+        xi : float
+            Volatility of variance. Must be > 0.
+        rho : float
+            Spot-vol correlation. Must be in (-1, 1).
+        q : float, default 0.0
+            Continuous dividend yield.
+        n_steps : int or None, default None
+            Number of time steps. If None, uses the engine's n_steps.
+            Unlike GBM there is no exact single-step scheme: the QE weak
+            error is O(dt), so European pricing also needs n_steps >> 1.
+        psi_c : float, default 1.5
+            Branch-switching threshold. Must lie in [1, 2]: the quadratic
+            branch requires psi <= 2 (else b^2 < 0) and the exponential
+            branch requires psi > 1 (else p < 0). Andersen recommends 1.5;
+            results are insensitive to the exact value within [1, 2].
+        martingale_correction : bool, default True
+            If True (Andersen 2008, §4.3.3 — recommended), replace the
+            constant K0 by the branch-dependent
+
+                K0* = -ln E[exp(A v_next) | v_t] - (K1 + K3/2) v_t,
+                A = K2 + K4/2
+
+            evaluated with the closed-form moment generating function of
+            each branch (noncentral-chi-squared for the quadratic branch,
+            mass-at-zero plus exponential for the other). This makes the
+            discounted-forward spot an **exact** martingale step by step,
+            removing the O(dt) drift bias of the plain scheme. If False,
+            uses the textbook K0 (useful for measuring that bias).
+        return_variance : bool, default False
+            If True, also return the simulated variance paths.
+
+        Returns
+        -------
+        paths : np.ndarray, shape (n_paths, n_steps + 1)
+            Spot paths; paths[:, 0] == S0.
+        (paths, variance_paths) : tuple of np.ndarray
+            When return_variance=True. variance_paths[:, 0] == v0, with
+            variance_paths >= 0 everywhere (exactly zero is attainable in
+            the exponential branch when Feller is violated).
+
+        Raises
+        ------
+        ValueError
+            If any parameter is outside its admissible range.
+
+        Notes
+        -----
+        **Random number usage.** Each step draws three independent streams
+        for all paths: Z_v (quadratic branch), U_v (exponential branch) and
+        Z (log-spot). Each path consumes Z_v or U_v, never both; the unused
+        draw is discarded. Independence makes this statistically exact, and
+        the fixed three-draws-per-step layout has a practical payoff: the
+        draw count never depends on parameter values, so two simulations
+        from the same seed stay synchronized under parameter bumps — common
+        random numbers remain effective for numerical Greeks even though
+        the branch masks change.
+
+        **Weak bias and the martingale correction.** QE samples the variance
+        from its exact conditional moments, but the plain log-spot drift is
+        an O(dt)-weak approximation: with dt = 0.01 the drift bias in E[S_T]
+        is already comparable to the standard error at 500k paths (~2 SE
+        measured for equity-style parameters). The default
+        martingale_correction=True eliminates it exactly. In the extreme
+        corner where the required exponential moment does not exist
+        (possible only for strongly positive rho with coarse steps, where
+        2*A*a >= 1 or beta <= A), the affected paths fall back to the
+        uncorrected K0 for that step: the scheme stays valid, only the
+        exact-martingale property degrades locally.
+
+        **Antithetic variates are deliberately not offered**: negating Z_v
+        and U_v does not produce antithetic variance paths through the
+        nonlinear QE map, so the pairing would not preserve the negative
+        correlation that makes the method work. Use more paths instead.
+
+        Examples
+        --------
+        >>> mc = MonteCarloEngine(n_paths=200_000, seed=42)
+        >>> paths = mc.simulate_heston(100, 0.04, 1.0, 0.05,
+        ...                            kappa=2.0, theta=0.04, xi=0.5, rho=-0.7,
+        ...                            n_steps=100)
+        >>> abs(np.exp(-0.05) * paths[:, -1].mean() - 100) < 0.2
+        True
+
+        References
+        ----------
+        .. [1] Andersen (2008). Simple and Efficient Simulation of the
+               Heston Stochastic Volatility Model. J. Comp. Finance 11(3).
+        """
+        if S0 <= 0:
+            raise ValueError(f"S0 must be > 0, got {S0}")
+        if v0 <= 0:
+            raise ValueError(f"v0 must be > 0, got {v0}")
+        if T <= 0:
+            raise ValueError(f"T must be > 0, got {T}")
+        if kappa <= 0:
+            raise ValueError(f"kappa must be > 0, got {kappa}")
+        if theta <= 0:
+            raise ValueError(f"theta must be > 0, got {theta}")
+        if xi <= 0:
+            raise ValueError(f"xi must be > 0, got {xi}")
+        if not -1.0 < rho < 1.0:
+            raise ValueError(f"rho must be in (-1, 1), got {rho}")
+        if not 1.0 <= psi_c <= 2.0:
+            raise ValueError(f"psi_c must be in [1, 2], got {psi_c}")
+
+        n_steps_actual = n_steps if n_steps is not None else self.n_steps
+        if n_steps_actual < 1:
+            raise ValueError(f"n_steps must be >= 1, got {n_steps_actual}")
+
+        dt = T / n_steps_actual
+        exp_kdt = np.exp(-kappa * dt)
+        one_minus_exp = 1.0 - exp_kdt
+
+        # Exact CIR conditional moments: m = theta + (v - theta) e^{-k dt},
+        # s2 = v * s2_v_coeff + s2_const (linear in the current variance)
+        s2_v_coeff = xi * xi * exp_kdt * one_minus_exp / kappa
+        s2_const = theta * xi * xi * one_minus_exp * one_minus_exp / (2.0 * kappa)
+
+        # Martingale-consistent drift weights, central scheme gamma1 = gamma2 = 1/2
+        gamma1 = gamma2 = 0.5
+        K0 = -rho * kappa * theta * dt / xi
+        K1 = gamma1 * dt * (kappa * rho / xi - 0.5) - rho / xi
+        K2 = gamma2 * dt * (kappa * rho / xi - 0.5) + rho / xi
+        K3 = gamma1 * dt * (1.0 - rho * rho)
+        K4 = gamma2 * dt * (1.0 - rho * rho)
+        drift = (r - q) * dt
+        # Constants of the exact-martingale correction (Andersen §4.3.3):
+        # K0* = -ln E[exp(A v_next)|v] - (K1 + K3/2) v with A = K2 + K4/2
+        A = K2 + 0.5 * K4
+        K1_plus_half_K3 = K1 + 0.5 * K3
+
+        paths = np.empty((self.n_paths, n_steps_actual + 1))
+        paths[:, 0] = S0
+        variance_paths: np.ndarray | None = None
+        if return_variance:
+            variance_paths = np.empty((self.n_paths, n_steps_actual + 1))
+            variance_paths[:, 0] = v0
+
+        log_S = np.full(self.n_paths, np.log(S0))
+        v = np.full(self.n_paths, v0)
+
+        for step in range(n_steps_actual):
+            m = theta + (v - theta) * exp_kdt
+            s2 = v * s2_v_coeff + s2_const
+            # m >= theta * (1 - e^{-k dt}) > 0 even at v = 0, so psi is finite
+            psi = s2 / (m * m)
+
+            Z_v = self._rng.standard_normal(self.n_paths)
+            U_v = self._rng.uniform(size=self.n_paths)
+            Z = self._rng.standard_normal(self.n_paths)
+
+            v_next = np.empty(self.n_paths)
+            K0_arr: np.ndarray | None = (
+                np.full(self.n_paths, K0) if martingale_correction else None
+            )
+            quad_mask = psi <= psi_c
+
+            if np.any(quad_mask):
+                # psi <= psi_c <= 2 guarantees 2/psi - 1 >= 0
+                two_over_psi = 2.0 / psi[quad_mask]
+                b2 = (two_over_psi - 1.0
+                      + np.sqrt(two_over_psi) * np.sqrt(two_over_psi - 1.0))
+                a = m[quad_mask] / (1.0 + b2)
+                v_next[quad_mask] = a * (np.sqrt(b2) + Z_v[quad_mask]) ** 2
+                if K0_arr is not None:
+                    # ln E[exp(A a (b + Z)^2)] = A a b^2/(1 - 2Aa)
+                    #                            - (1/2) ln(1 - 2Aa),  2Aa < 1
+                    two_A_a = 2.0 * A * a
+                    safe = two_A_a < 1.0 - 1e-12
+                    two_A_a_safe = np.where(safe, two_A_a, 0.0)
+                    k0_star = (-A * b2 * a / (1.0 - two_A_a_safe)
+                               + 0.5 * np.log1p(-two_A_a_safe)
+                               - K1_plus_half_K3 * v[quad_mask])
+                    K0_arr[quad_mask] = np.where(safe, k0_star, K0)
+
+            exp_mask = ~quad_mask
+            if np.any(exp_mask):
+                # psi > psi_c >= 1 guarantees p in (0, 1); U_v < 1 from [0, 1)
+                psi_e = psi[exp_mask]
+                p = (psi_e - 1.0) / (psi_e + 1.0)
+                beta = (1.0 - p) / m[exp_mask]
+                U = U_v[exp_mask]
+                v_next[exp_mask] = np.where(
+                    U <= p, 0.0, np.log((1.0 - p) / (1.0 - U)) / beta,
+                )
+                if K0_arr is not None:
+                    # ln E[exp(A v_next)] = ln(p + beta(1 - p)/(beta - A)),
+                    # valid for A < beta
+                    safe = beta > A + 1e-12
+                    denom = np.where(safe, beta - A, 1.0)
+                    k0_star = (-np.log(p + (1.0 - p) * beta / denom)
+                               - K1_plus_half_K3 * v[exp_mask])
+                    K0_arr[exp_mask] = np.where(safe, k0_star, K0)
+
+            # K3 v + K4 v_next >= 0 analytically; max guards rounding noise
+            log_S += (drift + (K0 if K0_arr is None else K0_arr) + K1 * v
+                      + K2 * v_next
+                      + np.sqrt(np.maximum(K3 * v + K4 * v_next, 0.0)) * Z)
+            v = v_next
+
+            paths[:, step + 1] = np.exp(log_S)
+            if variance_paths is not None:
+                variance_paths[:, step + 1] = v
+
+        if variance_paths is not None:
+            return paths, variance_paths
+        return paths
 
     # ──────────────────────────────────────────────
     # European option pricing

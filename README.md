@@ -44,6 +44,19 @@ Four families of path-dependent exotic instruments with analytical closed forms 
 - **Numerical Greeks** — bump-and-revalue for delta, gamma, vega, theta, rho on any exotic. GBM path rescaling for delta/gamma (single simulation). Common random numbers via seed reset for vega/theta/rho
 - **ExoticOption ABC** — unified `payoff(paths)` interface plugging directly into `MonteCarloEngine.price()`
 
+## Phase 4: Heston Stochastic Volatility
+
+Heston (1993) model with semi-closed-form pricing, industry-standard simulation and live market calibration:
+
+- **Characteristic function** in the numerically stable "Little Heston Trap" formulation (Albrecher et al. 2007) — continuous for all maturities, with exact handling of the degenerate points u = 0, u = -i
+- **Vanilla pricing** via Gil-Pelaez Fourier inversion (adaptive quadrature, pointwise) and **Carr-Madan FFT** (whole strike grid in one transform, Simpson weights, homogeneity-normalized) — cross-validated to < 3e-7
+- **Moment-explosion guard** — closed-form explosion time T*(p) (Andersen-Piterbarg 2007) instead of a finiteness check, which the spurious analytic continuation would fool
+- **QE simulation scheme** (Andersen 2008) — exact CIR conditional moments, quadratic/exponential branches with mass at zero (Feller violation handled natively), martingale correction (§4.3.3) on by default, fully vectorized over paths
+- **Phase 3 exotics under stochastic volatility** — Asian/Barrier/Lookback/Digital price on Heston paths with zero code changes (`ExoticOption.payoff` is model-agnostic)
+- **Greeks** — delta and gamma exact via the differentiated characteristic function (no bumping); vega defined as dV/d√v0; `model_greeks()` returns dV/d{v0, κ, θ, ξ, ρ}
+- **Calibration to S&P 500** — implied-vol-space objective, exp/tanh reparametrization, deterministic multi-start least squares, optional Feller soft penalty, parity-implied forwards per expiry, vol-time expiry sampling, liquidity filtering. Calibrated live to 1,718 SPX options across 8 expiries: RMSE 1.3 vol pts
+- **External validation** — 89 reference prices pinned against QuantLib's `AnalyticHestonEngine`: max deviation 1.6e-8
+
 ### Roadmap
 
 | Phase | Model | Status |
@@ -51,7 +64,7 @@ Four families of path-dependent exotic instruments with analytical closed forms 
 | 1 | Black-Scholes analytical | **Complete** |
 | 2 | Monte Carlo engine | **Complete** |
 | 3 | Exotic options (Asian, Barrier, Lookback, Digital) | **Complete** |
-| 4 | Heston stochastic volatility | Planned |
+| 4 | Heston stochastic volatility + SPX calibration | **Complete** |
 | 5 | Rough Bergomi (fractional Brownian motion) | Planned |
 
 ## Quick Start
@@ -96,6 +109,25 @@ result = mc.price(asian.payoff, paths, 0.05, 1.0, control_fn=cv_fn)
 from src.utils.greeks import numerical_greeks
 greeks = numerical_greeks(mc, asian.payoff, S0=100, T=1.0, r=0.05, sigma=0.20)
 # {'delta': 0.58, 'gamma': 0.025, 'vega': 23.1, 'theta': -3.8, 'rho': 32.4}
+
+# Heston stochastic volatility (Phase 4)
+from src.models import HestonModel
+
+heston = HestonModel(v0=0.04, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7)
+price = heston.price(100, 100, 1.0, 0.05, 'call')          # Fourier (Gil-Pelaez)
+surface = heston.price_surface(100, np.arange(70, 131), 1.0, 0.05)  # Carr-Madan FFT
+
+# Exotics under stochastic volatility: same instruments, Heston paths
+paths = mc.simulate_heston(100, 0.04, 1.0, 0.05,
+                           kappa=2.0, theta=0.04, xi=0.5, rho=-0.7, n_steps=252)
+result = mc.price(asian.payoff, paths, 0.05, 1.0)
+
+# Calibrate to a market implied-vol surface
+from src.calibration import HestonCalibrator
+
+cal = HestonCalibrator(S0=100.0, r=0.03, q=0.01)
+fit = cal.calibrate(strikes, maturities, market_ivs)
+# CalibrationResult(v0=0.0327, kappa=..., rho=-0.64, rmse_iv=1.3 vol pts, ...)
 ```
 
 ## Installation
@@ -112,7 +144,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-582 tests validate correctness through multiple independent methods:
+798 tests validate correctness through multiple independent methods:
 
 | Suite | Tests | What it validates |
 |-------|-------|-------------------|
@@ -121,6 +153,7 @@ pytest
 | `test_benchmark.py` | 13 | 7,500-point grid vs independent reference, BS + MC throughput |
 | `test_monte_carlo.py` | 127 | GBM distributions, Euler/Milstein strong convergence, MC vs BS cross-validation, VR (antithetic+control+IS), QMC, Euler absorption, batch pricing, Q-martingale |
 | `test_exotics.py` | 240 | 4 exotic instruments: MC vs analytical cross-validation, in-out parity, AM≥GM, complementarity, vanilla decomposition, boundary conditions, Greeks vs BS, Hypothesis (6,000+ random cases) |
+| `test_heston.py` | 215 | CF anchors (φ(0)=1, φ(-i)=forward), BS limit, 89 QuantLib reference prices, Gil-Pelaez vs FFT, moment-explosion threshold, QE exact CIR moments + martingale, exotics under Heston, smile/skew, calibration round-trips, Hypothesis (~2,000 random cases) |
 | `test_strategies.py` | 10 | Straddle delta-neutrality, butterfly bounds, Greeks linearity, delta-hedge P&L |
 | `test_visualization.py` | 19 | All 15 visualization functions, exotic payoff diagrams, figure cleanup |
 
@@ -130,9 +163,10 @@ pytest
 src/
 ├── models/
 │   ├── base.py              # ABC PricingModel interface
-│   └── black_scholes.py     # BS-Merton analytical engine (16 Greeks)
+│   ├── black_scholes.py     # BS-Merton analytical engine (16 Greeks)
+│   └── heston.py            # Heston: Little-Trap CF, Gil-Pelaez + Carr-Madan FFT
 ├── engines/
-│   ├── monte_carlo.py       # MC engine: GBM simulation, European + generic pricing
+│   ├── monte_carlo.py       # MC engine: GBM + Heston QE simulation, generic pricing
 │   └── variance_reduction.py # Antithetic, control variates, importance sampling
 ├── instruments/
 │   ├── base.py              # ABC ExoticOption interface
@@ -143,7 +177,9 @@ src/
 ├── utils/
 │   ├── visualization.py     # 15 visualization functions
 │   └── greeks.py            # Numerical Greeks: bump-and-revalue, CRN, path rescaling
-└── calibration/              # Vol surface calibration (Phase 4)
+└── calibration/
+    ├── heston_calibrator.py # IV-space least squares, multi-start, Feller penalty
+    └── market_data.py       # SPX chain download + cleaning (optional yfinance)
 ```
 
 All pricing models inherit from `PricingModel` (abstract base class), ensuring interchangeability in portfolio valuation, calibration, and risk management.
@@ -180,6 +216,12 @@ All pricing models inherit from `PricingModel` (abstract base class), ensuring i
 - Conze & Viswanathan (1991). *Path Dependent Options: The Case of Lookback Options.* J. Finance 46(5).
 - Broadie, Glasserman & Kou (1997). *A Continuity Correction for Discrete Barrier Options.* Math. Finance 7(4).
 - Kloeden & Platen (1992). *Numerical Solution of Stochastic Differential Equations.* Springer.
+- Heston (1993). *A Closed-Form Solution for Options with Stochastic Volatility.* RFS 6(2).
+- Albrecher, Mayer, Schoutens & Tistaert (2007). *The Little Heston Trap.* Wilmott.
+- Andersen (2008). *Simple and Efficient Simulation of the Heston Stochastic Volatility Model.* J. Comp. Finance 11(3).
+- Carr & Madan (1999). *Option Valuation Using the Fast Fourier Transform.* J. Comp. Finance 2(4).
+- Andersen & Piterbarg (2007). *Moment Explosions in Stochastic Volatility Models.* Finance & Stochastics 11(1).
+- Keller-Ressel (2011). *Moment Explosions and Long-Term Behavior of Affine Stochastic Volatility Models.* Math. Finance 21(1).
 
 ## License
 
