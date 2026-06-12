@@ -429,20 +429,10 @@ class HestonModel(PricingModel):
         """
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
-
-        S_b, K_b, T_b, r_b = np.broadcast_arrays(
-            np.asarray(S, dtype=np.float64), np.asarray(K, dtype=np.float64),
-            np.asarray(T, dtype=np.float64), np.asarray(r, dtype=np.float64),
+        return self._vectorize(
+            lambda s, k, t, rr: self._price_scalar(s, k, t, rr, opt, q),
+            S, K, T, r,
         )
-        if S_b.ndim == 0:
-            return self._price_scalar(
-                float(S_b), float(K_b), float(T_b), float(r_b), opt, q,
-            )
-        flat = [
-            self._price_scalar(float(s), float(k), float(t), float(rr), opt, q)
-            for s, k, t, rr in zip(S_b.ravel(), K_b.ravel(), T_b.ravel(), r_b.ravel())
-        ]
-        return np.asarray(flat, dtype=np.float64).reshape(S_b.shape)
 
     # ──────────────────────────────────────────────
     # Carr-Madan FFT surface
@@ -641,6 +631,12 @@ class HestonModel(PricingModel):
         ]
         return np.asarray(flat, dtype=np.float64).reshape(S_b.shape)
 
+    @staticmethod
+    def _central_diff(up_price: Numeric, dn_price: Numeric, h: float) -> Numeric:
+        """Central difference (up - dn) / (2h), 0-d results collapsed to float."""
+        diff = (np.asarray(up_price) - np.asarray(dn_price)) / (2.0 * h)
+        return float(diff) if diff.ndim == 0 else diff
+
     def _bumped(self, **overrides: float) -> "HestonModel":
         """
         Copy of this model with some parameters replaced, suppressing the
@@ -693,9 +689,9 @@ class HestonModel(PricingModel):
         h = 1e-3 * s_vol
         up = self._bumped(v0=(s_vol + h) ** 2)
         dn = self._bumped(v0=(s_vol - h) ** 2)
-        diff = (np.asarray(up.price(S, K, T, r, opt, q))
-                - np.asarray(dn.price(S, K, T, r, opt, q))) / (2.0 * h)
-        return float(diff) if diff.ndim == 0 else diff
+        return self._central_diff(
+            up.price(S, K, T, r, opt, q), dn.price(S, K, T, r, opt, q), h,
+        )
 
     def theta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
               option_type: str = 'call', q: float = 0.0) -> Numeric:
@@ -707,9 +703,10 @@ class HestonModel(PricingModel):
         opt = self._validate_option_type(option_type)
         T_arr = np.asarray(T, dtype=np.float64)
         h = 1e-3 * float(np.min(T_arr))
-        diff = (np.asarray(self.price(S, K, T_arr - h, r, opt, q))
-                - np.asarray(self.price(S, K, T_arr + h, r, opt, q))) / (2.0 * h)
-        return float(diff) if diff.ndim == 0 else diff
+        return self._central_diff(
+            self.price(S, K, T_arr - h, r, opt, q),
+            self.price(S, K, T_arr + h, r, opt, q), h,
+        )
 
     def rho(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
             option_type: str = 'call', q: float = 0.0) -> Numeric:
@@ -722,9 +719,10 @@ class HestonModel(PricingModel):
         opt = self._validate_option_type(option_type)
         h = 1e-4
         r_arr = np.asarray(r, dtype=np.float64)
-        diff = (np.asarray(self.price(S, K, T, r_arr + h, opt, q))
-                - np.asarray(self.price(S, K, T, r_arr - h, opt, q))) / (2.0 * h)
-        return float(diff) if diff.ndim == 0 else diff
+        return self._central_diff(
+            self.price(S, K, T, r_arr + h, opt, q),
+            self.price(S, K, T, r_arr - h, opt, q), h,
+        )
 
     def greeks(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
                option_type: str = 'call', q: float = 0.0) -> Dict[str, Numeric]:
@@ -772,21 +770,20 @@ class HestonModel(PricingModel):
         def central_fd(name: str, value: float, h: float) -> Numeric:
             up = self._bumped(**{name: value + h})
             dn = self._bumped(**{name: value - h})
-            diff = (np.asarray(up.price(S, K, T, r, opt, q))
-                    - np.asarray(dn.price(S, K, T, r, opt, q))) / (2.0 * h)
-            return float(diff) if diff.ndim == 0 else diff
+            return self._central_diff(
+                up.price(S, K, T, r, opt, q), dn.price(S, K, T, r, opt, q), h,
+            )
 
         # Relative bumps with a floor; rho clamped so both bumps stay in (-1, 1)
         h_rho = min(1e-3 * max(abs(self.rho_sv), 0.1),
                     0.5 * (1.0 - abs(self.rho_sv)))
-        result = {
+        return {
             'v0': central_fd('v0', self.v0, 1e-3 * self.v0),
             'kappa': central_fd('kappa', self.kappa, 1e-3 * self.kappa),
             'theta': central_fd('theta', self.theta_v, 1e-3 * self.theta_v),
             'xi': central_fd('xi', self.xi, 1e-3 * self.xi),
             'rho': central_fd('rho', self.rho_sv, h_rho),
         }
-        return {k: float(v) if np.ndim(v) == 0 else v for k, v in result.items()}
 
     # ──────────────────────────────────────────────
     # Dunder methods

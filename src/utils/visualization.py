@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 try:
     plt.style.use('seaborn-v0_8-whitegrid')
-except OSError:
+except OSError:  # pragma: no cover - environment-dependent style fallback
     try:
         plt.style.use('seaborn-whitegrid')
     except OSError:
@@ -708,6 +708,18 @@ def plot_mc_convergence(
     -------
     tuple[Figure, Axes]
     """
+    if len(path_counts) == 0:
+        raise ValueError('path_counts must not be empty.')
+    if len(std_errors) != len(path_counts):
+        raise ValueError(
+            f'std_errors must match path_counts in length, '
+            f'got {len(std_errors)} vs {len(path_counts)}.'
+        )
+    if errors is not None and len(errors) != len(path_counts):
+        raise ValueError(
+            f'errors must match path_counts in length, '
+            f'got {len(errors)} vs {len(path_counts)}.'
+        )
     path_counts_arr = np.array(path_counts, dtype=float)
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -742,7 +754,7 @@ def plot_mc_convergence(
 
 
 def plot_variance_reduction_comparison(
-    results_dict: dict[str, MCResult],
+    results_dict: Dict[str, 'MCResult'],
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Horizontal bar chart comparing std_error across variance reduction methods.
@@ -840,8 +852,8 @@ def plot_exotic_payoff(
     exotic : ExoticOption
         Any subclass of ``src.instruments.base.ExoticOption`` — must expose
         ``payoff(paths: np.ndarray) -> np.ndarray``. The function discovers
-        contract attributes (``K``, ``barrier``, ``lookback_type``,
-        ``option_type``) reflectively, so it works uniformly for Asian,
+        contract attributes (``K``, ``barrier``, ``barrier_type``,
+        ``avg_type``) reflectively, so it works uniformly for Asian,
         Barrier, Lookback and Digital.
     S0, T, r, sigma, q : float
         Market parameters for the underlying GBM.
@@ -872,6 +884,8 @@ def plot_exotic_payoff(
             f'Invalid market parameters: S0={S0}, T={T}, sigma={sigma} '
             '(all must be strictly positive).'
         )
+    if n_paths_show < 1:
+        raise ValueError(f'n_paths_show must be >= 1, got {n_paths_show}')
 
     n_paths_hist = max(5 * n_paths_show, 5_000)
     engine = MonteCarloEngine(n_paths=n_paths_hist, seed=seed)
@@ -888,13 +902,11 @@ def plot_exotic_payoff(
     K = getattr(exotic, 'K', None)
     barrier = getattr(exotic, 'barrier', None)
     barrier_type = getattr(exotic, 'barrier_type', None)
-    option_type = getattr(exotic, 'option_type', 'call')
 
     display_idx = np.linspace(0, n_paths_hist - 1, n_paths_show, dtype=int)
 
     for idx in display_idx:
         path = paths[idx]
-        color = COLORS_EXOTIC['path']
 
         if barrier is not None:
             knocked = False
@@ -909,10 +921,13 @@ def plot_exotic_payoff(
                 color = COLORS_EXOTIC['path_itm']
             else:
                 color = COLORS_EXOTIC['path_otm']
-        elif K is not None and option_type in ('call', 'put'):
-            terminal = path[-1]
-            itm = (terminal > K) if option_type == 'call' else (terminal < K)
-            color = COLORS_EXOTIC['path_itm'] if itm else COLORS_EXOTIC['path_otm']
+        else:
+            # Color by the realized payoff of THIS path, not by terminal
+            # moneyness: for path-dependent payoffs (Asian average vs
+            # strike) the two disagree, and the payoff is the quantity
+            # this diagnostic illustrates.
+            paying = payoffs[idx] > 0
+            color = COLORS_EXOTIC['path_itm'] if paying else COLORS_EXOTIC['path_otm']
 
         ax_paths.plot(t_grid, path, color=color, linewidth=0.9, alpha=0.7)
 

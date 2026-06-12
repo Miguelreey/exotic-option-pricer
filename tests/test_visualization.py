@@ -192,6 +192,96 @@ class TestNewVisualizations:
         plt.close(fig)
 
 
+class TestMCVisualizations:
+    """
+    Smoke tests for the Phase 2 MC visualization functions
+    (plot_mc_paths, plot_mc_convergence, plot_variance_reduction_comparison)
+    — added in the pre-Phase-5 audit: they previously had no tests.
+    """
+
+    @pytest.fixture
+    def mc_paths(self):
+        from src.engines.monte_carlo import MonteCarloEngine
+        mc = MonteCarloEngine(n_paths=200, seed=42)
+        return mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=50)
+
+    def test_plot_mc_paths(self, mc_paths):
+        from src.utils.visualization import plot_mc_paths
+        fig, ax = plot_mc_paths(mc_paths, T=1.0)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        assert isinstance(ax, matplotlib.axes.Axes)
+        plt.close(fig)
+
+    def test_plot_mc_paths_n_show_capped(self, mc_paths):
+        """n_show larger than n_paths must be capped, not crash."""
+        from src.utils.visualization import plot_mc_paths
+        fig, ax = plot_mc_paths(mc_paths, T=1.0, n_show=10_000)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_mc_paths_custom_title(self, mc_paths):
+        from src.utils.visualization import plot_mc_paths
+        fig, ax = plot_mc_paths(mc_paths, T=1.0, title='Custom title')
+        assert ax.get_title() == 'Custom title'
+        plt.close(fig)
+
+    def test_plot_mc_convergence(self):
+        from src.utils.visualization import plot_mc_convergence
+        fig, ax = plot_mc_convergence([100, 1_000, 10_000], [0.5, 0.158, 0.05])
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_mc_convergence_with_errors_and_reference(self):
+        from src.utils.visualization import plot_mc_convergence
+        fig, ax = plot_mc_convergence(
+            [100, 1_000, 10_000], [0.5, 0.158, 0.05],
+            errors=[0.4, 0.1, 0.04], reference_price=10.4506,
+        )
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_mc_convergence_empty_raises(self):
+        from src.utils.visualization import plot_mc_convergence
+        with pytest.raises(ValueError, match='path_counts'):
+            plot_mc_convergence([], [])
+
+    def test_plot_mc_convergence_length_mismatch_raises(self):
+        from src.utils.visualization import plot_mc_convergence
+        with pytest.raises(ValueError, match='std_errors'):
+            plot_mc_convergence([100, 1_000], [0.5])
+        with pytest.raises(ValueError, match='errors'):
+            plot_mc_convergence([100, 1_000], [0.5, 0.1], errors=[0.4])
+
+    def test_plot_variance_reduction_comparison(self):
+        from src.engines.monte_carlo import MonteCarloEngine
+        from src.utils.visualization import plot_variance_reduction_comparison
+
+        mc = MonteCarloEngine(n_paths=4_000, seed=42)
+        results = {
+            'Plain': mc.price_european(100, 100, 1.0, 0.05, 0.20),
+            'Antithetic': mc.price_european(
+                100, 100, 1.0, 0.05, 0.20, antithetic=True),
+            'Control': mc.price_european(
+                100, 100, 1.0, 0.05, 0.20, control_variate=True),
+        }
+        fig, ax = plot_variance_reduction_comparison(results)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        labels = [t.get_text() for t in ax.get_yticklabels()]
+        assert labels == ['Plain', 'Antithetic', 'Control']
+        plt.close(fig)
+
+    def test_plot_variance_reduction_single_entry(self):
+        """One entry: no variance-ratio annotations, still a valid figure."""
+        from src.engines.monte_carlo import MonteCarloEngine
+        from src.utils.visualization import plot_variance_reduction_comparison
+
+        mc = MonteCarloEngine(n_paths=4_000, seed=42)
+        results = {'Plain': mc.price_european(100, 100, 1.0, 0.05, 0.20)}
+        fig, ax = plot_variance_reduction_comparison(results)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+
 class TestExoticVisualizations:
     """Smoke tests for Phase 3 exotic visualization functions."""
 
@@ -256,6 +346,72 @@ class TestExoticVisualizations:
         assert isinstance(fig, matplotlib.figure.Figure)
         assert axes.shape == (2, 2)
         plt.close(fig)
+
+    def test_plot_exotic_payoff_down_barrier(self):
+        """down-and-out: exercises the 'down' barrier-crossing branch."""
+        from src.instruments.barrier import BarrierOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        barrier = BarrierOption(K=100, barrier=85, barrier_type='down-and-out')
+        fig, axes = plot_exotic_payoff(barrier, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_exotic_payoff_knock_in(self):
+        """up-and-in: knocked paths are colored as activated, not killed."""
+        from src.instruments.barrier import BarrierOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        barrier = BarrierOption(K=100, barrier=105, barrier_type='up-and-in')
+        fig, axes = plot_exotic_payoff(barrier, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_exotic_payoff_asian_geometric(self):
+        """Geometric Asian: exercises the geometric running-average overlay."""
+        from src.instruments.asian import AsianOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        asian = AsianOption(K=100, option_type='call', avg_type='geometric')
+        fig, axes = plot_exotic_payoff(asian, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_exotic_payoff_all_zero_payoffs(self):
+        """Deep-OTM digital: every payoff is zero -> placeholder text panel."""
+        from src.instruments.digital import DigitalOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        digital = DigitalOption(K=1e6, option_type='call', payout_type='cash')
+        fig, axes = plot_exotic_payoff(digital, S0=100, T=1.0, r=0.05, sigma=0.20,
+                                       n_paths_show=10, n_steps=50, seed=42)
+        assert isinstance(fig, matplotlib.figure.Figure)
+        plt.close(fig)
+
+    def test_plot_exotic_payoff_invalid_market_params_raises(self):
+        from src.instruments.digital import DigitalOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        digital = DigitalOption(K=100)
+        with pytest.raises(ValueError, match='Invalid market parameters'):
+            plot_exotic_payoff(digital, S0=-1.0, T=1.0, r=0.05, sigma=0.20)
+
+    def test_plot_exotic_payoff_invalid_n_paths_show_raises(self):
+        from src.instruments.digital import DigitalOption
+        from src.utils.visualization import plot_exotic_payoff
+
+        digital = DigitalOption(K=100)
+        with pytest.raises(ValueError, match='n_paths_show'):
+            plot_exotic_payoff(digital, S0=100, T=1.0, r=0.05, sigma=0.20,
+                               n_paths_show=0)
+
+    def test_plot_exotic_comparison_empty_raises(self):
+        from src.utils.visualization import plot_exotic_comparison
+        with pytest.raises(ValueError, match='at least one entry'):
+            plot_exotic_comparison({})
 
 
 if __name__ == '__main__':
