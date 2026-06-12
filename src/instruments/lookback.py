@@ -115,7 +115,11 @@ barriers:
 
 with ``beta ~= 0.5826``. Applied to the discrete MC extremum **before**
 computing the payoff, this removes the O(1/sqrt(n_steps)) bias and
-recovers the continuous-monitoring analytical price.
+recovers the continuous-monitoring analytical price. The adjustment is
+exposed as :meth:`LookbackOption.continuity_correction` (the lookback
+counterpart of ``BarrierOption.continuity_correction``); it operates on
+the extremum itself because, unlike a barrier level, the corrected
+quantity here is a per-path statistic rather than a contract parameter.
 
 Design Decisions
 ----------------
@@ -155,6 +159,10 @@ from .base import ExoticOption
 # Threshold below which the "r = q" limit form is used to avoid
 # catastrophic cancellation in the (sigma^2) / (2 * (r - q)) coefficient.
 _DRIFT_EPS: float = 1e-10
+
+# Broadie-Glasserman-Kou (1997) discrete-monitoring constant
+# beta = -zeta(1/2) / sqrt(2*pi). Same constant as barrier options.
+_BGY_BETA: float = 0.5826
 
 
 def _norm_pdf(x: float) -> float:
@@ -722,6 +730,78 @@ class LookbackOption(ExoticOption):
             intrinsic = np.exp(-r * T) * (K - S_min)
             return float(intrinsic + _fixed_put(S, S_min, T, r, sigma, q))
         return _fixed_put(S, K, T, r, sigma, q)
+
+    @staticmethod
+    def continuity_correction(
+        extremum: float | np.ndarray,
+        sigma: float,
+        dt: float,
+        kind: str,
+    ) -> float | np.ndarray:
+        """
+        Broadie-Glasserman-Kou (1997) adjusted extremum for discrete
+        monitoring.
+
+        Discrete monitoring underestimates the true range of the path:
+        the observed running max is biased low and the running min biased
+        high, by O(1/sqrt(n_steps)). The continuous-monitoring analytical
+        price is recovered from discrete MC paths by shifting the observed
+        extremum outward before computing the payoff:
+
+            M_eff = M_disc * exp(+beta * sigma * sqrt(dt))    (kind='max')
+            m_eff = m_disc * exp(-beta * sigma * sqrt(dt))    (kind='min')
+
+        with ``beta ~= 0.5826``. This is the lookback counterpart of
+        ``BarrierOption.continuity_correction``; it acts on the extremum
+        itself (a per-path statistic) rather than on a contract level,
+        hence the array support.
+
+        Parameters
+        ----------
+        extremum : float or np.ndarray
+            Discretely observed running extremum (e.g.
+            ``np.max(paths, axis=1)``). Must be > 0 elementwise.
+        sigma : float
+            Annualized volatility. Must be > 0.
+        dt : float
+            Monitoring interval ``T / n_steps`` (in years). Must be > 0.
+        kind : {'max', 'min'}
+            Which extremum is being corrected: the running max is pushed
+            up (+), the running min down (-).
+
+        Returns
+        -------
+        float or np.ndarray
+            Adjusted extremum, same shape as the input.
+
+        Examples
+        --------
+        >>> LookbackOption.continuity_correction(120.0, 0.20, 1/252, 'max')
+        120.883...
+        >>> LookbackOption.continuity_correction(80.0, 0.20, 1/252, 'min')
+        79.415...
+
+        References
+        ----------
+        .. [1] Broadie, Glasserman & Kou (1997). "A Continuity Correction
+           for Discrete Barrier Options." Math. Finance 7(4), 325-349.
+        """
+        if sigma <= 0:
+            raise ValueError(f"sigma must be > 0, got {sigma}")
+        if dt <= 0:
+            raise ValueError(f"dt must be > 0, got {dt}")
+
+        k = kind.strip().lower()
+        if k not in ("max", "min"):
+            raise ValueError(f"kind must be 'max' or 'min', got '{kind}'")
+
+        ext = np.asarray(extremum, dtype=np.float64)
+        if np.any(ext <= 0):
+            raise ValueError("extremum must be > 0 elementwise")
+
+        sign = 1.0 if k == "max" else -1.0
+        adjusted = ext * np.exp(sign * _BGY_BETA * sigma * np.sqrt(dt))
+        return float(adjusted) if adjusted.ndim == 0 else adjusted
 
     def __repr__(self) -> str:
         extra = f", K={self.K}" if self._strike_type == "fixed" else ""

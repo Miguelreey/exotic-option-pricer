@@ -164,7 +164,7 @@ class DigitalOption(ExoticOption):
         self.K = float(K)
         self._option_type = opt
         self._payout_type = pay
-        self.cash_amount = cash_amount
+        self.cash_amount = float(cash_amount)
 
     @property
     def option_type(self) -> str:
@@ -282,6 +282,8 @@ class DigitalOption(ExoticOption):
             raise ValueError(f"T must be > 0, got {T}")
         if sigma <= 0:
             raise ValueError(f"sigma must be > 0, got {sigma}")
+        if cash_amount < 0:
+            raise ValueError(f"cash_amount must be >= 0, got {cash_amount}")
 
         opt = option_type.strip().lower()
         if opt == "c":

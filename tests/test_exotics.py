@@ -1996,11 +1996,11 @@ class TestLookbackPayoff:
 class TestLookbackMC:
     """
     MC cross-validation of the Goldman-Sosin-Gatto / Conze-Viswanathan
-    analytical formulas. A BGK-style continuity correction is applied
-    to the discretely-observed extremum, mirroring the barrier case.
+    analytical formulas. The Broadie-Glasserman-Kou continuity correction
+    is applied to the discretely-observed extremum through the public
+    ``LookbackOption.continuity_correction`` API, mirroring the barrier
+    case.
     """
-
-    _BGY_BETA: float = 0.5826
 
     def _mc_with_bgk(
         self, lb: LookbackOption, S: float, T: float, r: float,
@@ -2014,10 +2014,12 @@ class TestLookbackMC:
         mc = MonteCarloEngine(n_paths=LOOKBACK_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(S, T, r, sigma, q=q, n_steps=n_steps)
         dt = T / n_steps
-        shift = self._BGY_BETA * sigma * np.sqrt(dt)
-        # Shift extrema by the Broadie-Glasserman-Kou factor
-        min_corrected = np.min(paths, axis=1) * np.exp(-shift)
-        max_corrected = np.max(paths, axis=1) * np.exp(shift)
+        min_corrected = LookbackOption.continuity_correction(
+            np.min(paths, axis=1), sigma, dt, 'min',
+        )
+        max_corrected = LookbackOption.continuity_correction(
+            np.max(paths, axis=1), sigma, dt, 'max',
+        )
         S_T = paths[:, -1]
 
         if lb.strike_type == 'floating':
@@ -2066,6 +2068,29 @@ class TestLookbackMC:
         res = self._mc_with_bgk(lb, S, T, r, sigma, q=q)
         analytical = LookbackOption.analytical_price(
             S, T, r, sigma, 'put', 'fixed', K=95.0, q=q,
+        )
+        assert abs(res.price - analytical) < 3.5 * res.std_error
+
+    def test_fixed_call_mc_vs_analytical_zero_drift(self):
+        """
+        r = q routes the fixed-strike call through the L'Hopital limit
+        (_fixed_call_zero_drift) — previously untested against MC.
+        """
+        S, T, r, sigma = 100.0, 1.0, 0.05, 0.20
+        lb = LookbackOption(option_type='call', strike_type='fixed', K=105.0)
+        res = self._mc_with_bgk(lb, S, T, r, sigma, q=r)
+        analytical = LookbackOption.analytical_price(
+            S, T, r, sigma, 'call', 'fixed', K=105.0, q=r,
+        )
+        assert abs(res.price - analytical) < 3.5 * res.std_error
+
+    def test_fixed_put_mc_vs_analytical_zero_drift(self):
+        """r = q routes the fixed-strike put through _fixed_put_zero_drift."""
+        S, T, r, sigma = 100.0, 1.0, 0.05, 0.20
+        lb = LookbackOption(option_type='put', strike_type='fixed', K=95.0)
+        res = self._mc_with_bgk(lb, S, T, r, sigma, q=r)
+        analytical = LookbackOption.analytical_price(
+            S, T, r, sigma, 'put', 'fixed', K=95.0, q=r,
         )
         assert abs(res.price - analytical) < 3.5 * res.std_error
 
@@ -2216,6 +2241,282 @@ class TestLookbackHypothesis:
         )
         vanilla = BlackScholesModel(sigma=sigma).price(S, S, T, r, 'put', q)
         assert lb >= vanilla - 1e-8 * max(S, 1.0)
+
+
+# ----------------------------------------------------------------------------
+# 27. Audit pre-Phase 5 (2026-06): fixed-strike zero-drift branches,
+#     continuity-correction API, and validation coverage gaps
+# ----------------------------------------------------------------------------
+class TestLookbackZeroDriftFixed:
+    """
+    L'Hopital r = q limit of the FIXED-strike Conze-Viswanathan formulas
+    (_fixed_call_zero_drift / _fixed_put_zero_drift), previously untested.
+
+    Branch continuity: the limit form at b = r - q = 0 must agree with the
+    generic formula evaluated just above the switching threshold
+    (_DRIFT_EPS = 1e-10). At b = 1e-7 the generic formula deviates from
+    the b = 0 limit by O(b) ~ 1e-5 in price terms, while a sign or term
+    error in the limit form would show up at O(S sigma sqrt(T) n(e1)) ~ 1.
+    """
+
+    S, T, R, SIGMA = 100.0, 1.0, 0.05, 0.20
+    B_SMALL = 1e-7  # just above _DRIFT_EPS: generic-formula branch
+    TOL = 1e-4
+
+    def test_fixed_call_otm_branch_continuity(self):
+        """K > S_max = S: the M = K (OTM) branch of the fixed call."""
+        limit = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
+            K=120.0, q=self.R,
+        )
+        generic = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
+            K=120.0, q=self.R - self.B_SMALL,
+        )
+        assert abs(limit - generic) < self.TOL
+
+    def test_fixed_call_itm_branch_continuity(self):
+        """K <= S_max: intrinsic + M = S_max branch of the fixed call."""
+        limit = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
+            K=90.0, q=self.R,
+        )
+        generic = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
+            K=90.0, q=self.R - self.B_SMALL,
+        )
+        assert abs(limit - generic) < self.TOL
+
+    def test_fixed_put_otm_branch_continuity(self):
+        """K < S_min = S: the M = K (OTM) branch of the fixed put."""
+        limit = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
+            K=80.0, q=self.R,
+        )
+        generic = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
+            K=80.0, q=self.R - self.B_SMALL,
+        )
+        assert abs(limit - generic) < self.TOL
+
+    def test_fixed_put_itm_branch_continuity(self):
+        """K >= S_min: intrinsic + M = S_min branch of the fixed put."""
+        limit = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
+            K=110.0, q=self.R,
+        )
+        generic = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
+            K=110.0, q=self.R - self.B_SMALL,
+        )
+        assert abs(limit - generic) < self.TOL
+
+    def test_fixed_call_itm_otm_boundary_zero_drift(self):
+        """
+        At K = S_max the ITM branch carries zero intrinsic and both
+        branches must agree (continuity across the branch switch), also
+        in the r = q limit.
+        """
+        at_boundary = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
+            K=100.0, q=self.R,
+        )
+        just_otm = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
+            K=100.0 + 1e-9, q=self.R,
+        )
+        assert abs(at_boundary - just_otm) < 1e-6
+
+    def test_fixed_call_zero_drift_exceeds_discounted_intrinsic(self):
+        """ITM fixed call at r = q is worth more than the locked intrinsic."""
+        price = LookbackOption.analytical_price(
+            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
+            K=90.0, q=self.R,
+        )
+        assert price > np.exp(-self.R * self.T) * 10.0
+
+
+class TestLookbackContinuityCorrection:
+    """
+    LookbackOption.continuity_correction — the Broadie-Glasserman-Kou
+    extremum adjustment, now a public API (lookback counterpart of
+    BarrierOption.continuity_correction).
+
+    Exact anchor: with sigma = 1, dt = 1,
+        M_eff / M = exp(+0.5826)  and  m_eff / m = exp(-0.5826).
+    """
+
+    def test_max_exact_ratio(self):
+        ratio = LookbackOption.continuity_correction(100.0, 1.0, 1.0, 'max') / 100.0
+        assert abs(ratio - np.exp(0.5826)) < 1e-12
+
+    def test_min_exact_ratio(self):
+        ratio = LookbackOption.continuity_correction(100.0, 1.0, 1.0, 'min') / 100.0
+        assert abs(ratio - np.exp(-0.5826)) < 1e-12
+
+    def test_matches_barrier_constant(self):
+        """Same BGK beta as the barrier correction: identical factors."""
+        lb_max = LookbackOption.continuity_correction(120.0, 0.20, 1 / 252, 'max')
+        ba_up = BarrierOption.continuity_correction(120.0, 0.20, 1 / 252, 'up')
+        assert abs(lb_max - ba_up) < 1e-12
+
+        lb_min = LookbackOption.continuity_correction(80.0, 0.20, 1 / 252, 'min')
+        ba_dn = BarrierOption.continuity_correction(80.0, 0.20, 1 / 252, 'down')
+        assert abs(lb_min - ba_dn) < 1e-12
+
+    def test_array_input_elementwise(self):
+        ext = np.array([80.0, 100.0, 120.0])
+        out = LookbackOption.continuity_correction(ext, 0.20, 1 / 252, 'max')
+        assert isinstance(out, np.ndarray)
+        assert out.shape == ext.shape
+        factor = np.exp(0.5826 * 0.20 * np.sqrt(1 / 252))
+        assert np.allclose(out, ext * factor, rtol=0.0, atol=1e-10)
+
+    def test_scalar_returns_float(self):
+        out = LookbackOption.continuity_correction(100.0, 0.20, 1 / 252, 'min')
+        assert isinstance(out, float)
+
+    def test_fine_monitoring_limit(self):
+        """dt -> 0: the correction vanishes (continuous monitoring)."""
+        out = LookbackOption.continuity_correction(100.0, 0.20, 1e-12, 'max')
+        assert abs(out - 100.0) < 1e-4
+
+    def test_kind_normalization(self):
+        a = LookbackOption.continuity_correction(100.0, 0.20, 0.01, ' MAX ')
+        b = LookbackOption.continuity_correction(100.0, 0.20, 0.01, 'max')
+        assert a == b
+
+    def test_invalid_kind_raises(self):
+        with pytest.raises(ValueError, match="kind must be"):
+            LookbackOption.continuity_correction(100.0, 0.20, 0.01, 'up')
+
+    def test_nonpositive_sigma_raises(self):
+        with pytest.raises(ValueError, match="sigma must be > 0"):
+            LookbackOption.continuity_correction(100.0, 0.0, 0.01, 'max')
+
+    def test_nonpositive_dt_raises(self):
+        with pytest.raises(ValueError, match="dt must be > 0"):
+            LookbackOption.continuity_correction(100.0, 0.20, 0.0, 'max')
+
+    def test_nonpositive_extremum_raises(self):
+        with pytest.raises(ValueError, match="extremum"):
+            LookbackOption.continuity_correction(
+                np.array([100.0, 0.0]), 0.20, 0.01, 'max',
+            )
+
+
+class TestLookbackValidationGaps:
+    """Shorthand types, raises and identity branches not previously covered."""
+
+    def test_constructor_shorthand_c(self):
+        assert LookbackOption(option_type='c').option_type == 'call'
+
+    def test_constructor_shorthand_p(self):
+        assert LookbackOption(option_type='p').option_type == 'put'
+
+    def test_analytical_shorthand_matches_full_name(self):
+        full = LookbackOption.analytical_price(
+            100, 1.0, 0.05, 0.20, 'call', 'floating',
+        )
+        short = LookbackOption.analytical_price(
+            100, 1.0, 0.05, 0.20, 'c', 'floating',
+        )
+        assert short == full
+
+        full_p = LookbackOption.analytical_price(
+            100, 1.0, 0.05, 0.20, 'put', 'floating',
+        )
+        short_p = LookbackOption.analytical_price(
+            100, 1.0, 0.05, 0.20, 'p', 'floating',
+        )
+        assert short_p == full_p
+
+    def test_analytical_nonpositive_spot_raises(self):
+        with pytest.raises(ValueError, match="S must be > 0"):
+            LookbackOption.analytical_price(
+                0.0, 1.0, 0.05, 0.20, 'call', 'floating',
+            )
+
+    def test_analytical_invalid_option_type_raises(self):
+        with pytest.raises(ValueError, match="option_type"):
+            LookbackOption.analytical_price(
+                100, 1.0, 0.05, 0.20, 'straddle', 'floating',
+            )
+
+    def test_analytical_invalid_strike_type_raises(self):
+        with pytest.raises(ValueError, match="strike_type"):
+            LookbackOption.analytical_price(
+                100, 1.0, 0.05, 0.20, 'call', 'asian',
+            )
+
+    def test_analytical_nonpositive_extrema_raise(self):
+        with pytest.raises(ValueError, match="S_min and S_max"):
+            LookbackOption.analytical_price(
+                100, 1.0, 0.05, 0.20, 'call', 'floating', S_min=-5.0,
+            )
+
+    def test_analytical_fixed_nonpositive_K_raises(self):
+        with pytest.raises(ValueError, match="K must be > 0"):
+            LookbackOption.analytical_price(
+                100, 1.0, 0.05, 0.20, 'call', 'fixed', K=0.0,
+            )
+
+    def test_eq_other_type_is_not_equal(self):
+        lb = LookbackOption()
+        assert (lb == 42) is False
+        assert lb != 'lookback'
+
+
+class TestDigitalValidationGaps:
+    """Digital audit fixes: float coercion, payout property, raises."""
+
+    def test_cash_amount_coerced_to_float(self):
+        """Same coercion contract as K (audit 2026-04 fix for K)."""
+        dig = DigitalOption(K=100, cash_amount=5)
+        assert type(dig.cash_amount) is float
+
+        dig_np = DigitalOption(K=100, cash_amount=np.float64(5.0))
+        assert type(dig_np.cash_amount) is float
+
+    def test_payout_type_property(self):
+        assert DigitalOption(K=100, payout_type='cash').payout_type == 'cash'
+        assert DigitalOption(K=100, payout_type='asset').payout_type == 'asset'
+
+    def test_constructor_shorthand_c_p(self):
+        assert DigitalOption(K=100, option_type='c').option_type == 'call'
+        assert DigitalOption(K=100, option_type='p').option_type == 'put'
+
+    def test_analytical_shorthand_matches_full_name(self):
+        for short, full in (('c', 'call'), ('p', 'put')):
+            a = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, short)
+            b = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, full)
+            assert a == b
+
+    def test_analytical_nonpositive_K_raises(self):
+        with pytest.raises(ValueError, match="K must be > 0"):
+            DigitalOption.analytical_price(100, 0.0, 1.0, 0.05, 0.20)
+
+    def test_analytical_negative_cash_amount_raises(self):
+        """analytical_price now validates cash_amount like the constructor."""
+        with pytest.raises(ValueError, match="cash_amount must be >= 0"):
+            DigitalOption.analytical_price(
+                100, 100, 1.0, 0.05, 0.20, cash_amount=-1.0,
+            )
+
+    def test_analytical_invalid_option_type_raises(self):
+        with pytest.raises(ValueError, match="option_type"):
+            DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, 'digital')
+
+    def test_analytical_invalid_payout_type_raises(self):
+        with pytest.raises(ValueError, match="payout_type"):
+            DigitalOption.analytical_price(
+                100, 100, 1.0, 0.05, 0.20, 'call', 'shares',
+            )
+
+    def test_eq_other_type_is_not_equal(self):
+        dig = DigitalOption(K=100)
+        assert (dig == 42) is False
+        assert dig != 'digital'
 
 
 # ============================================================================

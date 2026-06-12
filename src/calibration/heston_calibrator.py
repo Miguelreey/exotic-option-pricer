@@ -322,6 +322,11 @@ class HestonCalibrator:
             Maturities in years, implied vols as decimals.
         weights : np.ndarray or None, default None
             Per-option weights (e.g. vegas or 1/spread). None = equal.
+            Keep them O(1) (e.g. normalized by their max): options the
+            trial model cannot price contribute a FIXED residual of
+            ``_PENALTY_RESIDUAL`` = 1.0 vol point, which must dominate
+            the weighted vol errors to repel the optimizer from
+            unpriceable parameter regions.
         starts : list of dict or None, default None
             Explicit start points (each with keys v0, kappa, theta, xi,
             rho). None = data-driven heuristic grid.
@@ -403,8 +408,7 @@ class HestonCalibrator:
             )
             if best is None or fit.cost < best.cost:
                 best = fit
-        if best is None:  # unreachable: start_list validated non-empty
-            raise RuntimeError("no optimization start was run")
+        assert best is not None  # narrowed: start_list validated non-empty
 
         params = self._to_params(best.x)
         with warnings.catch_warnings():
