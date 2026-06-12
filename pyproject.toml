@@ -53,6 +53,9 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+market = [
+    "yfinance>=0.2",
+]
 
 [project.urls]
 Repository = "https://github.com/Miguelreey/exotic-option-pricer"
