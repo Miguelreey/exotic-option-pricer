@@ -43,6 +43,41 @@ class PricingModel(ABC):
     - RoughBergomiModel : Rough volatility via hybrid MC (Phase 5)
     """
 
+    # ──────────────────────────────────────────────
+    # Shared market-input validation
+    # ──────────────────────────────────────────────
+    # Concrete on the ABC by design: the (S, K, T, r) domain and the
+    # option_type contract are part of the interface itself, not of any
+    # particular model. Hoisted here in Phase 5 when RoughBergomiModel
+    # would have required a third identical copy (pre-Phase-5 audit,
+    # 2026-06-12).
+
+    def _validate_inputs(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric) -> None:
+        """Validate market inputs: S > 0, K >= 0, T > 0, all finite."""
+        S_a = np.asarray(S, dtype=np.float64)
+        K_a = np.asarray(K, dtype=np.float64)
+        T_a = np.asarray(T, dtype=np.float64)
+        if np.any(S_a <= 0):
+            raise ValueError(f"S must be > 0. Got min={np.min(S_a):.6f}")
+        if np.any(K_a < 0):
+            raise ValueError(f"K must be >= 0. Got min={np.min(K_a):.6f}")
+        if np.any(T_a <= 0):
+            raise ValueError(f"T must be > 0. Got min={np.min(T_a):.6e}")
+        if not np.all(np.isfinite(S_a)) or not np.all(np.isfinite(K_a)):
+            raise ValueError("S and K must be finite.")
+        if not np.all(np.isfinite(T_a)) or not np.all(np.isfinite(r)):
+            raise ValueError("T and r must be finite.")
+
+    @staticmethod
+    def _validate_option_type(option_type: str) -> str:
+        """Normalize option_type to 'call'/'put'; raise on anything else."""
+        n = option_type.strip().lower()
+        if n in ('call', 'c'):
+            return 'call'
+        elif n in ('put', 'p'):
+            return 'put'
+        raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
+
     @abstractmethod
     def price(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
               option_type: str = 'call', q: float = 0.0) -> Numeric:
