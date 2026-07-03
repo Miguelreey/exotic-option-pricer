@@ -1,7 +1,7 @@
 ﻿# Exotic Option Pricer
 
 [![CI](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml/badge.svg)](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml)
-[![coverage](https://img.shields.io/badge/coverage-96%25-brightgreen.svg)](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/badge/coverage-97%25-brightgreen.svg)](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml)
 [![Python 3.10-3.13](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![ruff](https://img.shields.io/badge/linting-ruff-261230.svg)](https://github.com/astral-sh/ruff)
@@ -57,6 +57,17 @@ Heston (1993) model with semi-closed-form pricing, industry-standard simulation 
 - **Calibration to S&P 500** â€” implied-vol-space objective, exp/tanh reparametrization, deterministic multi-start least squares, optional Feller soft penalty, parity-implied forwards per expiry, vol-time expiry sampling, liquidity filtering. Calibrated live to 1,718 SPX options across 8 expiries: RMSE 1.3 vol pts
 - **External validation** â€” 89 reference prices pinned against QuantLib's `AnalyticHestonEngine`: max deviation 1.6e-8
 
+## Phase 5: Rough Bergomi
+
+Bayer-Friz-Gatheral (2016) rough volatility — the model class that reproduces the short-dated ATM skew power law psi(T) ~ T^(H-1/2) that no classical stochastic-volatility model can:
+
+- **Two independent Volterra simulations, cross-validated** — exact joint Cholesky factorization (internal gold standard: rBergomi has no QuantLib-style external benchmark) and the Bennedsen-Lunde-Pakkanen (2017) hybrid scheme with exact treatment of the singular kernel on the latest interval + FFT causal convolution, O(paths n log n)
+- **Conditional Black-Scholes pricing** (McCrickerd-Pakkanen 2018) — the orthogonal Brownian dimension integrated out analytically, plus an exact-mean control variate on the conditional forward: ~0.4x the plain-MC standard error at SPX-style parameters, collapsing to the Phase 1 BS price with zero variance as eta -> 0
+- **Exact martingale discretization** — the left-point log-Euler forward is exact for any step count (verified at n = 50 and n = 500); antithetic variates supported (the Gaussian map is linear, unlike Heston QE)
+- **The skew power law, measured** — log-log slope -0.43 for H = 0.1 (theory: H - 1/2 = -0.4) over T in [0.05, 1], persisting at -0.41 on [0.01, 0.05] where the Phase 4 SPX-calibrated Heston saturates to -0.20: the structural motivation for rough volatility
+- **Greeks under exact common random numbers** — delta/gamma by path rescaling (rBergomi coefficients are spot-independent), vega = dV/d sqrt(xi0) via the exact v-proportional-to-xi0 scaling, `model_greeks()` = dV/d{xi0, eta, H, rho}
+- **Phase 3 exotics on rough-volatility paths with zero code changes** — the model-agnostic `payoff(paths)` contract holds for its third model; IV surfaces via the Phase 1 Halley solver
+
 ### Roadmap
 
 | Phase | Model | Status |
@@ -65,7 +76,8 @@ Heston (1993) model with semi-closed-form pricing, industry-standard simulation 
 | 2 | Monte Carlo engine | **Complete** |
 | 3 | Exotic options (Asian, Barrier, Lookback, Digital) | **Complete** |
 | 4 | Heston stochastic volatility + SPX calibration | **Complete** |
-| 5 | Rough Bergomi (fractional Brownian motion) | Planned |
+| 5 | Rough Bergomi (rough volatility, hybrid scheme) | **Complete** |
+| 6 | Showcase notebooks + repository polish | Planned |
 
 ## Quick Start
 
@@ -128,6 +140,17 @@ from src.calibration import HestonCalibrator
 cal = HestonCalibrator(S0=100.0, r=0.03, q=0.01)
 fit = cal.calibrate(strikes, maturities, market_ivs)
 # CalibrationResult(v0=0.0327, kappa=..., rho=-0.64, rmse_iv=1.3 vol pts, ...)
+
+# Rough Bergomi (Phase 5): the short-dated skew power law psi(T) ~ T^(H-1/2)
+from src.models import RoughBergomiModel
+
+rb = RoughBergomiModel(xi0=0.04, eta=1.9, H=0.1, rho=-0.9)
+price = rb.price(100, 100, 1.0, 0.05, 'call')       # conditional-BS Monte Carlo
+ivs = rb.iv_surface(100, np.arange(80, 121, 5), [0.1, 0.5, 1.0], 0.05)
+
+# Exotics on rough-volatility paths: same instruments, zero code changes
+paths = rb.simulate(100, 1.0, 0.05, n_paths=100_000, n_steps=252)
+result = mc.price(asian.payoff, paths, 0.05, 1.0)
 ```
 
 ## Installation
@@ -144,7 +167,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-798 tests validate correctness through multiple independent methods:
+977 tests validate correctness through multiple independent methods:
 
 | Suite | Tests | What it validates |
 |-------|-------|-------------------|
@@ -154,6 +177,7 @@ pytest
 | `test_monte_carlo.py` | 127 | GBM distributions, Euler/Milstein strong convergence, MC vs BS cross-validation, VR (antithetic+control+IS), QMC, Euler absorption, batch pricing, Q-martingale |
 | `test_exotics.py` | 240 | 4 exotic instruments: MC vs analytical cross-validation, in-out parity, AMâ‰¥GM, complementarity, vanilla decomposition, boundary conditions, Greeks vs BS, Hypothesis (6,000+ random cases) |
 | `test_heston.py` | 215 | CF anchors (Ï†(0)=1, Ï†(-i)=forward), BS limit, 89 QuantLib reference prices, Gil-Pelaez vs FFT, moment-explosion threshold, QE exact CIR moments + martingale, exotics under Heston, smile/skew, calibration round-trips, Hypothesis (~2,000 random cases) |
+| `test_rough_bergomi.py` | 126 | Volterra covariance quadrature vs exact anchors, hybrid vs exact Cholesky on prices, exact left-point martingale, BS limit (deterministic to 1e-8), skew power law T^(H-1/2) + Heston saturation contrast, exotics on rough paths, Hurst roundtrip, Hypothesis |
 | `test_strategies.py` | 10 | Straddle delta-neutrality, butterfly bounds, Greeks linearity, delta-hedge P&L |
 | `test_visualization.py` | 19 | All 15 visualization functions, exotic payoff diagrams, figure cleanup |
 
@@ -165,6 +189,7 @@ src/
 â”‚   â”œâ”€â”€ base.py              # ABC PricingModel interface
 â”‚   â”œâ”€â”€ black_scholes.py     # BS-Merton analytical engine (16 Greeks)
 â”‚   â””â”€â”€ heston.py            # Heston: Little-Trap CF, Gil-Pelaez + Carr-Madan FFT
+â”‚   â””â”€â”€ rough_bergomi.py     # Rough Bergomi: hybrid scheme + conditional MC
 â”œâ”€â”€ engines/
 â”‚   â”œâ”€â”€ monte_carlo.py       # MC engine: GBM + Heston QE simulation, generic pricing
 â”‚   â””â”€â”€ variance_reduction.py # Antithetic, control variates, importance sampling
@@ -222,6 +247,11 @@ All pricing models inherit from `PricingModel` (abstract base class), ensuring i
 - Carr & Madan (1999). *Option Valuation Using the Fast Fourier Transform.* J. Comp. Finance 2(4).
 - Andersen & Piterbarg (2007). *Moment Explosions in Stochastic Volatility Models.* Finance & Stochastics 11(1).
 - Keller-Ressel (2011). *Moment Explosions and Long-Term Behavior of Affine Stochastic Volatility Models.* Math. Finance 21(1).
+- Bayer, Friz & Gatheral (2016). *Pricing under Rough Volatility.* Quant. Finance 16(6).
+- Bennedsen, Lunde & Pakkanen (2017). *Hybrid Scheme for Brownian Semistationary Processes.* Finance & Stochastics 21(4).
+- McCrickerd & Pakkanen (2018). *Turbocharging Monte Carlo Pricing for the Rough Bergomi Model.* Quant. Finance 18(11).
+- Gatheral, Jaisson & Rosenbaum (2018). *Volatility is Rough.* Quant. Finance 18(6).
+- Fukasawa (2011). *Asymptotic Analysis for Stochastic Volatility: Martingale Expansion.* Finance & Stochastics 15.
 
 ## License
 
