@@ -72,33 +72,8 @@ class BlackScholesModel(PricingModel):
             )
         self.sigma: float = sigma
 
-    # ──────────────────────────────────────────────
-    # Validation helpers
-    # ──────────────────────────────────────────────
-
-    def _validate_inputs(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric) -> None:
-        S_a = np.asarray(S, dtype=np.float64)
-        K_a = np.asarray(K, dtype=np.float64)
-        T_a = np.asarray(T, dtype=np.float64)
-        if np.any(S_a <= 0):
-            raise ValueError(f"S must be > 0. Got min={np.min(S_a):.6f}")
-        if np.any(K_a < 0):
-            raise ValueError(f"K must be >= 0. Got min={np.min(K_a):.6f}")
-        if np.any(T_a <= 0):
-            raise ValueError(f"T must be > 0. Got min={np.min(T_a):.6e}")
-        if not np.all(np.isfinite(S_a)) or not np.all(np.isfinite(K_a)):
-            raise ValueError("S and K must be finite.")
-        if not np.all(np.isfinite(T_a)) or not np.all(np.isfinite(r)):
-            raise ValueError("T and r must be finite.")
-
-    @staticmethod
-    def _validate_option_type(option_type: str) -> str:
-        n = option_type.strip().lower()
-        if n in ('call', 'c'):
-            return 'call'
-        elif n in ('put', 'p'):
-            return 'put'
-        raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
+    # Input validation (_validate_inputs / _validate_option_type) is
+    # inherited from the PricingModel ABC.
 
     # ──────────────────────────────────────────────
     # Core: d1, d2

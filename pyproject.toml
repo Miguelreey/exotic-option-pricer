@@ -79,7 +79,12 @@ select = ["E", "F", "W", "I"]
 "tests/*" = ["E402"]
 
 [tool.mypy]
-python_version = "3.10"
+# No python_version pin: mypy must parse third-party stubs with the grammar
+# of the environment it runs in. numpy >= 2.5 stubs use PEP 695 `type`
+# statements, which mypy rejects under a 3.10 target — and "Python 3.10 +
+# numpy 2.5" is not an installable environment anyway (numpy 2.5 dropped
+# 3.10). Real 3.10 compatibility is covered by the CI test matrix and by
+# ruff's target-version = "py310".
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

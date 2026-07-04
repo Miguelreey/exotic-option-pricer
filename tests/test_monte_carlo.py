@@ -138,7 +138,12 @@ class TestGBMExactSimulation:
         mu = (HULL_R - 0.0 - 0.5 * HULL_SIGMA ** 2) * HULL_T
         sigma_total = HULL_SIGMA * np.sqrt(HULL_T)
 
-        stat, pvalue = stats.kstest(log_returns, 'norm', args=(mu, sigma_total))
+        # Standardize and test against N(0, 1): the KS statistic is
+        # invariant under the affine map, so this is exactly equivalent to
+        # kstest(log_returns, 'norm', args=(mu, sigma_total)) — whose
+        # `args` fast path broke in scipy 1.18.0 (ndtr() TypeError).
+        z = (log_returns - mu) / sigma_total
+        stat, pvalue = stats.kstest(z, 'norm')
         assert pvalue > 0.01, f"KS test failed: stat={stat:.4f}, p={pvalue:.4f}"
 
     def test_paths_strictly_positive(self):
