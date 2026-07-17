@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
 
 
 @pytest.fixture

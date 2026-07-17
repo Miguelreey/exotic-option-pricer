@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/calibration/market_data.py
+Exotic Option Pricer — exotic_option_pricer/calibration/market_data.py
 
 Live option-chain download for calibration (S&P 500 by default).
 

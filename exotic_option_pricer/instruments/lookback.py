@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/instruments/lookback.py
+Exotic Option Pricer — exotic_option_pricer/instruments/lookback.py
 
 Lookback options: path-dependent payoffs based on the running maximum
 or minimum of the underlying. Four flavors are supported:
@@ -512,8 +512,8 @@ class LookbackOption(ExoticOption):
     --------
     Floating-strike call (always non-negative):
 
-    >>> from src.instruments.lookback import LookbackOption
-    >>> from src.engines.monte_carlo import MonteCarloEngine
+    >>> from exotic_option_pricer.instruments.lookback import LookbackOption
+    >>> from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
     >>> lb = LookbackOption(option_type='call', strike_type='floating')
     >>> mc = MonteCarloEngine(n_paths=200_000, seed=42)
     >>> paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=252)

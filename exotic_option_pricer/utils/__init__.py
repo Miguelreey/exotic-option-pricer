@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src.utils
+Exotic Option Pricer — exotic_option_pricer.utils
 
 Visualization, Greeks and analysis utilities.
 """

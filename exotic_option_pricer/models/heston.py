@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/models/heston.py
+Exotic Option Pricer — exotic_option_pricer/models/heston.py
 
 Heston (1993) stochastic volatility model with characteristic-function pricing.
 

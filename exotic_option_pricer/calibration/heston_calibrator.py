@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/calibration/heston_calibrator.py
+Exotic Option Pricer — exotic_option_pricer/calibration/heston_calibrator.py
 
 Heston calibration to an implied volatility surface.
 

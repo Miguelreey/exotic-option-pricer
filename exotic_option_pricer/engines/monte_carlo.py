@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/engines/monte_carlo.py
+Exotic Option Pricer — exotic_option_pricer/engines/monte_carlo.py
 
 Production-grade Monte Carlo pricing engine for European and exotic derivatives.
 
@@ -166,7 +166,7 @@ class MonteCarloEngine:
 
     Examples
     --------
-    >>> from src.engines.monte_carlo import MonteCarloEngine
+    >>> from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
     >>> mc = MonteCarloEngine(n_paths=500_000, seed=42)
     >>> result = mc.price_european(100, 100, 1.0, 0.05, 0.20,
     ...                            option_type='call', antithetic=True,

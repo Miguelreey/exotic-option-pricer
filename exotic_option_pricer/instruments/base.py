@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/instruments/base.py
+Exotic Option Pricer — exotic_option_pricer/instruments/base.py
 
 Abstract base class for exotic option instruments.
 

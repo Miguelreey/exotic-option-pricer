@@ -51,12 +51,12 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from src.engines.monte_carlo import MonteCarloEngine
-from src.instruments.asian import AsianOption
-from src.instruments.barrier import BarrierOption
-from src.models.black_scholes import BlackScholesModel
-from src.models.heston import HestonModel
-from src.models.rough_bergomi import RoughBergomiModel
+from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
+from exotic_option_pricer.instruments.asian import AsianOption
+from exotic_option_pricer.instruments.barrier import BarrierOption
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.models.heston import HestonModel
+from exotic_option_pricer.models.rough_bergomi import RoughBergomiModel
 
 # ──────────────────────────────────────────────
 # Shared parameters

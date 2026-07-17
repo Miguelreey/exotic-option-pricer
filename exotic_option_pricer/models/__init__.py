@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src.models
+Exotic Option Pricer — exotic_option_pricer.models
 
 Pricing models for derivative valuation.
 """

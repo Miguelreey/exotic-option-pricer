@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/instruments/barrier.py
+Exotic Option Pricer — exotic_option_pricer/instruments/barrier.py
 
 Single-barrier options: knock-in / knock-out on an up or down barrier,
 for both calls and puts, under Black-Scholes / GBM dynamics.
@@ -251,8 +251,8 @@ class BarrierOption(ExoticOption):
 
     Examples
     --------
-    >>> from src.instruments.barrier import BarrierOption
-    >>> from src.engines.monte_carlo import MonteCarloEngine
+    >>> from exotic_option_pricer.instruments.barrier import BarrierOption
+    >>> from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
     >>> bar = BarrierOption(K=100, barrier=120, barrier_type='up-and-out')
     >>> mc = MonteCarloEngine(n_paths=200_000, seed=42)
     >>> paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=252)

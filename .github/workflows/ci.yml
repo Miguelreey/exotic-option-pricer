@@ -23,10 +23,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Lint with ruff
-        run: ruff check src/ tests/
+        run: ruff check exotic_option_pricer/ tests/
 
       - name: Type check with mypy
-        run: mypy src/
+        run: mypy exotic_option_pricer/
 
   test:
     runs-on: ubuntu-latest
@@ -48,4 +48,4 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with coverage
-        run: pytest --cov=src --cov-report=term-missing --cov-fail-under=80 --tb=short -q
+        run: pytest --cov=exotic_option_pricer --cov-report=term-missing --cov-fail-under=80 --tb=short -q

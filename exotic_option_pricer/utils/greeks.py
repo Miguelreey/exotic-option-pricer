@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/utils/greeks.py
+Exotic Option Pricer — exotic_option_pricer/utils/greeks.py
 
 Bump-and-revalue numerical Greeks for exotic derivatives priced by
 Monte Carlo. Uses Common Random Numbers (CRN) to suppress the variance
@@ -115,7 +115,7 @@ from typing import Literal
 
 import numpy as np
 
-from src.engines.monte_carlo import MonteCarloEngine
+from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
 
 __all__ = [
     "numerical_delta",
@@ -293,8 +293,8 @@ def numerical_delta(
 
     Examples
     --------
-    >>> from src.engines.monte_carlo import MonteCarloEngine
-    >>> from src.instruments.asian import AsianOption
+    >>> from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
+    >>> from exotic_option_pricer.instruments.asian import AsianOption
     >>> mc = MonteCarloEngine(n_paths=500_000, seed=42)
     >>> asian = AsianOption(K=100.0)
     >>> delta = numerical_delta(mc, asian.payoff, 100.0, 1.0, 0.05, 0.20)

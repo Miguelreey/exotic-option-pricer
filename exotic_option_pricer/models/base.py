@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/models/base.py
+Exotic Option Pricer — exotic_option_pricer/models/base.py
 
 Abstract base class defining the interface for all pricing models.
 Ensures interchangeability between BlackScholesModel, HestonModel,

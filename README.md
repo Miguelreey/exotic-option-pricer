@@ -106,8 +106,8 @@ offline end-to-end — no API keys, no market-data downloads.
 
 ```python
 import numpy as np
-from src.models import BlackScholesModel
-from src.engines import MonteCarloEngine
+from exotic_option_pricer.models import BlackScholesModel
+from exotic_option_pricer.engines import MonteCarloEngine
 
 # Analytical pricing
 bs = BlackScholesModel(sigma=0.20)
@@ -131,7 +131,7 @@ result = mc.price_european(100, 100, 1.0, 0.05, 0.20, 'call',
 # MCResult(price=10.4494, std_error=0.0029, CI=[10.4437, 10.4551], vr='antithetic+control')
 
 # Exotic option pricing with variance reduction
-from src.instruments import AsianOption, BarrierOption, LookbackOption, DigitalOption
+from exotic_option_pricer.instruments import AsianOption, BarrierOption, LookbackOption, DigitalOption
 
 asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
 mc = MonteCarloEngine(n_paths=500_000, seed=42)
@@ -141,12 +141,12 @@ result = mc.price(asian.payoff, paths, 0.05, 1.0, control_fn=cv_fn)
 # MCResult(price=5.55, std_error=0.002, vr='control')
 
 # Numerical Greeks for any exotic
-from src.utils.greeks import numerical_greeks
+from exotic_option_pricer.utils.greeks import numerical_greeks
 greeks = numerical_greeks(mc, asian.payoff, S0=100, T=1.0, r=0.05, sigma=0.20)
 # {'delta': 0.58, 'gamma': 0.025, 'vega': 23.1, 'theta': -3.8, 'rho': 32.4}
 
 # Heston stochastic volatility (Phase 4)
-from src.models import HestonModel
+from exotic_option_pricer.models import HestonModel
 
 heston = HestonModel(v0=0.04, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7)
 price = heston.price(100, 100, 1.0, 0.05, 'call')          # Fourier (Gil-Pelaez)
@@ -158,14 +158,14 @@ paths = mc.simulate_heston(100, 0.04, 1.0, 0.05,
 result = mc.price(asian.payoff, paths, 0.05, 1.0)
 
 # Calibrate to a market implied-vol surface
-from src.calibration import HestonCalibrator
+from exotic_option_pricer.calibration import HestonCalibrator
 
 cal = HestonCalibrator(S0=100.0, r=0.03, q=0.01)
 fit = cal.calibrate(strikes, maturities, market_ivs)
 # CalibrationResult(v0=0.0327, kappa=..., rho=-0.64, rmse_iv=1.3 vol pts, ...)
 
 # Rough Bergomi (Phase 5): the short-dated skew power law psi(T) ~ T^(H-1/2)
-from src.models import RoughBergomiModel
+from exotic_option_pricer.models import RoughBergomiModel
 
 rb = RoughBergomiModel(xi0=0.04, eta=1.9, H=0.1, rho=-0.9)
 price = rb.price(100, 100, 1.0, 0.05, 'call')       # conditional-BS Monte Carlo
@@ -207,7 +207,7 @@ pytest
 ## Architecture
 
 ```
-src/
+exotic_option_pricer/
 ├── models/
 │   ├── base.py              # ABC PricingModel interface
 │   ├── black_scholes.py     # BS-Merton analytical engine (16 Greeks)

@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src.instruments
+Exotic Option Pricer — exotic_option_pricer.instruments
 
 Exotic option instruments that define payoff structures for path-dependent
 derivatives. Each instrument implements ExoticOption.payoff(), which plugs

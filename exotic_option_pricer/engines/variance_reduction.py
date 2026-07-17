@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/engines/variance_reduction.py
+Exotic Option Pricer — exotic_option_pricer/engines/variance_reduction.py
 
 Variance reduction techniques for Monte Carlo pricing.
 

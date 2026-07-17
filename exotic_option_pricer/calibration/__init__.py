@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src.calibration
+Exotic Option Pricer — exotic_option_pricer.calibration
 
 Model calibration to market data (volatility surface fitting).
 

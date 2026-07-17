@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/instruments/asian.py
+Exotic Option Pricer — exotic_option_pricer/instruments/asian.py
 
 Asian (average-price) options: arithmetic and geometric averaging,
 fixed and floating strike variants.
@@ -146,8 +146,8 @@ class AsianOption(ExoticOption):
 
     Examples
     --------
-    >>> from src.instruments.asian import AsianOption
-    >>> from src.engines.monte_carlo import MonteCarloEngine
+    >>> from exotic_option_pricer.instruments.asian import AsianOption
+    >>> from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
     >>> asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
     >>> mc = MonteCarloEngine(n_paths=200_000, seed=42)
     >>> paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=252)

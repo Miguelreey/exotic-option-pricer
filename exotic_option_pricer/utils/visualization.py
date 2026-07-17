@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/utils/visualization.py
+Exotic Option Pricer — exotic_option_pricer/utils/visualization.py
 
 Professional visualization module for the Black-Scholes model.
 
@@ -36,11 +36,11 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
 
 if TYPE_CHECKING:
-    from src.engines.monte_carlo import MCResult
-    from src.instruments.base import ExoticOption
+    from exotic_option_pricer.engines.monte_carlo import MCResult
+    from exotic_option_pricer.instruments.base import ExoticOption
 
 try:
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -851,7 +851,7 @@ def plot_exotic_payoff(
     Parameters
     ----------
     exotic : ExoticOption
-        Any subclass of ``src.instruments.base.ExoticOption`` — must expose
+        Any subclass of ``exotic_option_pricer.instruments.base.ExoticOption`` — must expose
         ``payoff(paths: np.ndarray) -> np.ndarray``. The function discovers
         contract attributes (``K``, ``barrier``, ``barrier_type``,
         ``avg_type``) reflectively, so it works uniformly for Asian,
@@ -878,7 +878,7 @@ def plot_exotic_payoff(
     5000)``) than the panel display, so the distribution is smooth even
     when only 40 paths are plotted.
     """
-    from src.engines.monte_carlo import MonteCarloEngine  # lazy: avoid cycles
+    from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine  # lazy: avoid cycles
 
     if S0 <= 0 or T <= 0 or sigma <= 0:
         raise ValueError(
@@ -948,8 +948,8 @@ def plot_exotic_payoff(
             barrier, color=COLORS_EXOTIC['barrier'], linewidth=1.8,
             linestyle='-.', label=f'Barrier $H={barrier:g}$', zorder=4,
         )
-    from src.instruments.asian import AsianOption  # lazy: avoid cycles
-    from src.instruments.lookback import LookbackOption  # lazy: avoid cycles
+    from exotic_option_pricer.instruments.asian import AsianOption  # lazy: avoid cycles
+    from exotic_option_pricer.instruments.lookback import LookbackOption  # lazy: avoid cycles
 
     sample_path = paths[display_idx[0]]
     if isinstance(exotic, LookbackOption):

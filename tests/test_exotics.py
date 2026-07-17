@@ -21,14 +21,14 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.engines.monte_carlo import MonteCarloEngine
-from src.instruments.asian import AsianOption
-from src.instruments.barrier import BarrierOption
-from src.instruments.base import ExoticOption
-from src.instruments.digital import DigitalOption
-from src.instruments.lookback import LookbackOption
-from src.models.black_scholes import BlackScholesModel
-from src.utils.greeks import (
+from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
+from exotic_option_pricer.instruments.asian import AsianOption
+from exotic_option_pricer.instruments.barrier import BarrierOption
+from exotic_option_pricer.instruments.base import ExoticOption
+from exotic_option_pricer.instruments.digital import DigitalOption
+from exotic_option_pricer.instruments.lookback import LookbackOption
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.utils.greeks import (
     numerical_delta,
     numerical_gamma,
     numerical_greeks,

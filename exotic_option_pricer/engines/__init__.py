@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src.engines
+Exotic Option Pricer — exotic_option_pricer.engines
 
 Numerical pricing engines for derivative valuation.
 

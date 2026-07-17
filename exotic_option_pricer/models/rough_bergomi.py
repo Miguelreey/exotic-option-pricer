@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/models/rough_bergomi.py
+Exotic Option Pricer — exotic_option_pricer/models/rough_bergomi.py
 
 Rough Bergomi (Bayer-Friz-Gatheral 2016) rough volatility model.
 
@@ -165,7 +165,7 @@ class RoughBergomiModel(PricingModel):
 
     Exotics from Phase 3 consume rBergomi paths without modification:
 
-    >>> from src.engines.monte_carlo import MonteCarloEngine
+    >>> from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
     >>> engine = MonteCarloEngine(n_paths=50_000, seed=1)
     >>> paths = model.simulate(100, 1.0, 0.05, n_paths=50_000, seed=1)
     >>> res = engine.price(lambda p: np.maximum(p[:, -1] - 100, 0), paths, 0.05, 1.0)

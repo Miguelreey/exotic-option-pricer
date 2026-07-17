@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from scipy.stats import norm
 
-from src.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
 
 
 # ============================================================================
@@ -252,7 +252,7 @@ class TestMCBenchmark:
         Must sustain > 1M paths/sec on modern hardware (vectorized
         log-space cumsum, no Python loops).
         """
-        from src.engines.monte_carlo import MonteCarloEngine
+        from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
 
         n_paths = 100_000
         mc = MonteCarloEngine(n_paths=n_paths, n_steps=1, seed=42)
@@ -272,7 +272,7 @@ class TestMCBenchmark:
 
         Throughput measured as paths/sec (each path = 252 steps).
         """
-        from src.engines.monte_carlo import MonteCarloEngine
+        from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
 
         n_paths = 10_000
         mc = MonteCarloEngine(n_paths=n_paths, n_steps=252, seed=42)
@@ -292,7 +292,7 @@ class TestMCBenchmark:
 
         Measures options/sec for price_european (simulate + price pipeline).
         """
-        from src.engines.monte_carlo import MonteCarloEngine
+        from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
 
         n_paths = 100_000
         n_reps = 10
@@ -315,7 +315,7 @@ class TestMCBenchmark:
 
         VR should add < 2x overhead vs plain (not 10x).
         """
-        from src.engines.monte_carlo import MonteCarloEngine
+        from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
 
         n_paths = 100_000
         n_reps = 10
@@ -350,7 +350,7 @@ class TestMCBenchmark:
         Euler (Python loop) is expected to be much slower and is not
         benchmarked here — it exists for validation, not production use.
         """
-        from src.engines.monte_carlo import MonteCarloEngine
+        from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
 
         n_paths, n_steps = 50_000, 100
 

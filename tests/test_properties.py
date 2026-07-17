@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from hypothesis import given, settings
 from hypothesis.strategies import floats
 
-from src.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
 
 # ============================================================================
 # Hypothesis strategies for valid financial parameters

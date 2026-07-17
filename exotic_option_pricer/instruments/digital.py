@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/instruments/digital.py
+Exotic Option Pricer — exotic_option_pricer/instruments/digital.py
 
 Digital (binary) options: cash-or-nothing and asset-or-nothing.
 
@@ -120,8 +120,8 @@ class DigitalOption(ExoticOption):
 
     Examples
     --------
-    >>> from src.instruments.digital import DigitalOption
-    >>> from src.engines.monte_carlo import MonteCarloEngine
+    >>> from exotic_option_pricer.instruments.digital import DigitalOption
+    >>> from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
     >>> import numpy as np
     >>> dig = DigitalOption(K=100, option_type='call', payout_type='cash')
     >>> mc = MonteCarloEngine(n_paths=500_000, seed=42)

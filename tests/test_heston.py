@@ -38,19 +38,19 @@ import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from src.calibration.heston_calibrator import (
+from exotic_option_pricer.calibration.heston_calibrator import (
     HestonCalibrator,
     filter_option_quotes,
 )
-from src.calibration.market_data import (
+from exotic_option_pricer.calibration.market_data import (
     _implied_dividend_yield,
     _select_expiries,
 )
-from src.engines.monte_carlo import MonteCarloEngine
-from src.instruments.asian import AsianOption
-from src.instruments.barrier import BarrierOption
-from src.models.black_scholes import BlackScholesModel
-from src.models.heston import HestonModel
+from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
+from exotic_option_pricer.instruments.asian import AsianOption
+from exotic_option_pricer.instruments.barrier import BarrierOption
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.models.heston import HestonModel
 
 # ──────────────────────────────────────────────
 # Shared parameters and fixtures

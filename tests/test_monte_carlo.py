@@ -29,15 +29,15 @@ from hypothesis import strategies as st
 from scipy import stats
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.engines.monte_carlo import MCResult, MonteCarloEngine
-from src.engines.variance_reduction import (
+from exotic_option_pricer.engines.monte_carlo import MCResult, MonteCarloEngine
+from exotic_option_pricer.engines.variance_reduction import (
     control_variate_adjust,
     generate_antithetic_normals,
     importance_sampling_likelihood,
     importance_sampling_shift,
     optimal_beta,
 )
-from src.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
 
 # ============================================================================
 # Standard test parameters (same as Phase 1 for cross-validation)

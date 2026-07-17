@@ -1,5 +1,5 @@
 """
-Exotic Option Pricer — src/models/black_scholes.py
+Exotic Option Pricer — exotic_option_pricer/models/black_scholes.py
 
 Production-grade Black-Scholes-Merton (1973) analytical pricing engine.
 
