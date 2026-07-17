@@ -28,7 +28,7 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from scipy import stats
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from exotic_option_pricer.engines.monte_carlo import MCResult, MonteCarloEngine
 from exotic_option_pricer.engines.variance_reduction import (
     control_variate_adjust,
@@ -117,7 +117,7 @@ class TestGBMExactSimulation:
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA)
         log_returns = np.log(paths[:, -1] / HULL_S)
 
-        expected_var = HULL_SIGMA ** 2 * HULL_T
+        expected_var = HULL_SIGMA**2 * HULL_T
         sample_var = np.var(log_returns, ddof=1)
 
         # Variance estimator has SE ~ sigma^2 * sqrt(2/(N-1))
@@ -135,7 +135,7 @@ class TestGBMExactSimulation:
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA)
         log_returns = np.log(paths[:, -1] / HULL_S)
 
-        mu = (HULL_R - 0.0 - 0.5 * HULL_SIGMA ** 2) * HULL_T
+        mu = (HULL_R - 0.0 - 0.5 * HULL_SIGMA**2) * HULL_T
         sigma_total = HULL_SIGMA * np.sqrt(HULL_T)
 
         # Standardize and test against N(0, 1): the KS statistic is
@@ -143,7 +143,7 @@ class TestGBMExactSimulation:
         # kstest(log_returns, 'norm', args=(mu, sigma_total)) — whose
         # `args` fast path broke in scipy 1.18.0 (ndtr() TypeError).
         z = (log_returns - mu) / sigma_total
-        stat, pvalue = stats.kstest(z, 'norm')
+        stat, pvalue = stats.kstest(z, "norm")
         assert pvalue > 0.01, f"KS test failed: stat={stat:.4f}, p={pvalue:.4f}"
 
     def test_paths_strictly_positive(self):
@@ -169,7 +169,11 @@ class TestGBMExactSimulation:
         q = 0.03
         mc = MonteCarloEngine(n_paths=n_paths, n_steps=n_steps, seed=MC_SEED)
         paths = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, q=q,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            q=q,
         )
 
         t_grid = np.linspace(0, HULL_T, n_steps + 1)
@@ -216,7 +220,7 @@ class TestEulerMaruyamaConvergence:
             biases = []
             for seed in range(n_seeds):
                 mc = MonteCarloEngine(n_paths=50_000, n_steps=n_steps, seed=seed * 100)
-                paths = mc.simulate_gbm(S0, T, r, sigma, scheme='euler')
+                paths = mc.simulate_gbm(S0, T, r, sigma, scheme="euler")
                 ST = paths[:, -1]
                 biases.append(np.mean(ST**2) - expected_second_moment)
             avg_biases.append(abs(np.mean(biases)))
@@ -234,8 +238,8 @@ class TestEulerMaruyamaConvergence:
         mc_exact = MonteCarloEngine(n_paths=100_000, n_steps=1, seed=MC_SEED)
         mc_euler = MonteCarloEngine(n_paths=100_000, n_steps=1000, seed=MC_SEED)
 
-        paths_exact = mc_exact.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='exact')
-        paths_euler = mc_euler.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='euler')
+        paths_exact = mc_exact.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="exact")
+        paths_euler = mc_euler.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="euler")
 
         payoff_exact = np.mean(np.maximum(paths_exact[:, -1] - HULL_K, 0))
         payoff_euler = np.mean(np.maximum(paths_euler[:, -1] - HULL_K, 0))
@@ -247,7 +251,7 @@ class TestEulerMaruyamaConvergence:
 
     def test_euler_paths_shape(self):
         mc = MonteCarloEngine(n_paths=100, n_steps=50, seed=MC_SEED)
-        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='euler')
+        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="euler")
         assert paths.shape == (100, 51)
         np.testing.assert_array_equal(paths[:, 0], HULL_S)
 
@@ -269,8 +273,8 @@ class TestMilsteinScheme:
         mc_exact = MonteCarloEngine(n_paths=n_paths, n_steps=n_steps, seed=MC_SEED)
         mc_milstein = MonteCarloEngine(n_paths=n_paths, n_steps=n_steps, seed=MC_SEED)
 
-        paths_exact = mc_exact.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='exact')
-        paths_mil = mc_milstein.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='milstein')
+        paths_exact = mc_exact.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="exact")
+        paths_mil = mc_milstein.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="milstein")
 
         ST_exact = paths_exact[:, -1]
         ST_mil = paths_mil[:, -1]
@@ -283,7 +287,7 @@ class TestMilsteinScheme:
     def test_milstein_paths_positive(self):
         """Milstein paths should stay positive for reasonable parameters."""
         mc = MonteCarloEngine(n_paths=10_000, n_steps=252, seed=MC_SEED)
-        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='milstein')
+        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="milstein")
         # With sigma=0.20 and 252 steps, paths should stay positive
         assert np.all(paths[:, 0] > 0)
         # Terminal values should be mostly positive
@@ -292,7 +296,7 @@ class TestMilsteinScheme:
     def test_milstein_mean_terminal(self):
         """E[S_T] under Milstein should match theoretical value."""
         mc = MonteCarloEngine(n_paths=300_000, n_steps=100, seed=MC_SEED)
-        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='milstein')
+        paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="milstein")
         ST = paths[:, -1]
         expected = HULL_S * np.exp(HULL_R * HULL_T)
         se = np.std(ST, ddof=1) / np.sqrt(len(ST))
@@ -351,8 +355,7 @@ class TestMilsteinScheme:
             S = np.full(n_paths, S0)
             for step in range(n_steps):
                 z = Z_coarse[:, step]
-                S = S * (1.0 + drift_coeff + diff_coeff * z
-                         + mil_coeff * (z * z - 1.0))
+                S = S * (1.0 + drift_coeff + diff_coeff * z + mil_coeff * (z * z - 1.0))
 
             mean_errors.append(np.mean(np.abs(S - ST_exact)))
 
@@ -433,80 +436,83 @@ class TestEuropeanPricing:
 
     def test_call_atm(self, bs):
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_put_atm(self, bs):
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put')
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'put')
+        result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "put")
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "put")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_call_itm(self, bs):
         K = 90.0  # ITM call
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, 'call')
-        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, 'call')
+        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, "call")
+        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, "call")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_put_itm(self, bs):
         K = 110.0  # ITM put
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, 'put')
-        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, 'put')
+        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, "put")
+        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, "put")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_call_otm(self, bs):
         K = 120.0  # OTM call
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, 'call')
-        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, 'call')
+        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, "call")
+        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, "call")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_put_otm(self, bs):
         K = 80.0  # OTM put
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, 'put')
-        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, 'put')
+        result = mc.price_european(HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, "put")
+        analytical = bs.price(HULL_S, K, HULL_T, HULL_R, "put")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_with_dividends(self, bs):
         q = 0.03
         bs_div = BlackScholesModel(sigma=HULL_SIGMA)
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', q=q)
-        analytical = bs_div.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call', q=q)
+        result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call", q=q)
+        analytical = bs_div.price(HULL_S, HULL_K, HULL_T, HULL_R, "call", q=q)
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
-    @pytest.mark.parametrize("S,K,T,r,sigma,q", [
-        (100, 100, 1.0, 0.05, 0.20, 0.0),
-        (100, 100, 0.5, 0.05, 0.30, 0.0),
-        (100, 110, 1.0, 0.05, 0.20, 0.0),
-        (100, 90, 1.0, 0.05, 0.20, 0.0),
-        (50, 50, 2.0, 0.03, 0.25, 0.0),
-        (200, 200, 0.25, 0.08, 0.15, 0.0),
-        (100, 100, 1.0, 0.05, 0.40, 0.0),
-        (100, 100, 1.0, 0.05, 0.10, 0.0),
-        (100, 100, 1.0, 0.05, 0.20, 0.02),
-        (100, 100, 1.0, 0.05, 0.20, 0.05),
-        (100, 80, 0.5, 0.03, 0.35, 0.01),
-        (100, 120, 2.0, 0.07, 0.25, 0.03),
-        (150, 140, 0.75, 0.04, 0.18, 0.0),
-        (50, 55, 1.5, 0.06, 0.22, 0.0),
-        (100, 100, 3.0, 0.05, 0.20, 0.0),
-        (100, 100, 0.1, 0.05, 0.20, 0.0),
-        (80, 100, 1.0, 0.05, 0.30, 0.0),
-        (120, 100, 1.0, 0.05, 0.30, 0.0),
-        (100, 100, 1.0, 0.0, 0.20, 0.0),
-        (100, 100, 1.0, 0.10, 0.20, 0.0),
-    ])
+    @pytest.mark.parametrize(
+        "S,K,T,r,sigma,q",
+        [
+            (100, 100, 1.0, 0.05, 0.20, 0.0),
+            (100, 100, 0.5, 0.05, 0.30, 0.0),
+            (100, 110, 1.0, 0.05, 0.20, 0.0),
+            (100, 90, 1.0, 0.05, 0.20, 0.0),
+            (50, 50, 2.0, 0.03, 0.25, 0.0),
+            (200, 200, 0.25, 0.08, 0.15, 0.0),
+            (100, 100, 1.0, 0.05, 0.40, 0.0),
+            (100, 100, 1.0, 0.05, 0.10, 0.0),
+            (100, 100, 1.0, 0.05, 0.20, 0.02),
+            (100, 100, 1.0, 0.05, 0.20, 0.05),
+            (100, 80, 0.5, 0.03, 0.35, 0.01),
+            (100, 120, 2.0, 0.07, 0.25, 0.03),
+            (150, 140, 0.75, 0.04, 0.18, 0.0),
+            (50, 55, 1.5, 0.06, 0.22, 0.0),
+            (100, 100, 3.0, 0.05, 0.20, 0.0),
+            (100, 100, 0.1, 0.05, 0.20, 0.0),
+            (80, 100, 1.0, 0.05, 0.30, 0.0),
+            (120, 100, 1.0, 0.05, 0.30, 0.0),
+            (100, 100, 1.0, 0.0, 0.20, 0.0),
+            (100, 100, 1.0, 0.10, 0.20, 0.0),
+        ],
+    )
     def test_grid_cross_validation(self, S, K, T, r, sigma, q):
         """Grid of 20 parameter combinations: MC vs BS analytical."""
         bs_model = BlackScholesModel(sigma=sigma)
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
-        for opt in ('call', 'put'):
+        for opt in ("call", "put"):
             result = mc.price_european(S, K, T, r, sigma, opt, q=q)
             analytical = bs_model.price(S, K, T, r, opt, q=q)
             tol = max(0.05, 3 * result.std_error)
@@ -526,21 +532,19 @@ class TestAntitheticVariates:
         """Antithetic call price should match BS analytical (unbiased)."""
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         anti = mc.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', antithetic=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call", antithetic=True
         )
 
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
 
         assert abs(anti.price - analytical) < max(0.05, 3 * anti.std_error)
 
     def test_antithetic_unbiased_put(self):
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        anti = mc.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', antithetic=True
-        )
+        anti = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "put", antithetic=True)
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'put')
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "put")
         assert abs(anti.price - analytical) < max(0.05, 3 * anti.std_error)
 
     def test_antithetic_reduces_variance_call(self):
@@ -548,9 +552,9 @@ class TestAntitheticVariates:
         mc_plain = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         mc_anti = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
-        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         anti = mc_anti.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', antithetic=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call", antithetic=True
         )
 
         assert anti.std_error < plain.std_error, (
@@ -563,9 +567,9 @@ class TestAntitheticVariates:
         mc_plain = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         mc_anti = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
-        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put')
+        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "put")
         anti = mc_anti.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', antithetic=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "put", antithetic=True
         )
 
         assert anti.std_error < plain.std_error
@@ -575,9 +579,9 @@ class TestAntitheticVariates:
         mc_plain = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         mc_anti = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
-        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         anti = mc_anti.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', antithetic=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call", antithetic=True
         )
 
         ratio = (anti.std_error / plain.std_error) ** 2
@@ -600,19 +604,19 @@ class TestControlVariates:
     def test_control_unbiased_call(self):
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         result = mc.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', control_variate=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call", control_variate=True
         )
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_control_unbiased_put(self):
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         result = mc.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', control_variate=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "put", control_variate=True
         )
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'put')
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "put")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_control_reduces_variance(self):
@@ -620,9 +624,9 @@ class TestControlVariates:
         mc_plain = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         mc_cv = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
-        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         cv = mc_cv.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', control_variate=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call", control_variate=True
         )
 
         assert cv.std_error < plain.std_error, (
@@ -641,9 +645,9 @@ class TestControlVariates:
         mc_plain = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         mc_cv = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
-        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        plain = mc_plain.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         cv = mc_cv.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', control_variate=True
+            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call", control_variate=True
         )
 
         ratio = (cv.std_error / plain.std_error) ** 2
@@ -653,13 +657,19 @@ class TestControlVariates:
         """Combined antithetic + control should be best of all."""
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         result = mc.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call',
-            antithetic=True, control_variate=True
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            antithetic=True,
+            control_variate=True,
         )
-        assert result.variance_reduction == 'antithetic+control'
+        assert result.variance_reduction == "antithetic+control"
 
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_optimal_beta_positive_for_calls(self):
@@ -714,24 +724,22 @@ class TestConvergenceRate:
 
         for n in path_counts:
             mc = MonteCarloEngine(n_paths=n, seed=MC_SEED)
-            result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+            result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
             std_errors.append(result.std_error)
 
         log_n = np.log(path_counts)
         log_se = np.log(std_errors)
         slope, _, _, _, _ = stats.linregress(log_n, log_se)
 
-        assert -0.60 < slope < -0.40, (
-            f"Log-log slope = {slope:.4f}, expected ~ -0.50"
-        )
+        assert -0.60 < slope < -0.40, f"Log-log slope = {slope:.4f}, expected ~ -0.50"
 
     def test_doubling_paths_halves_variance(self):
         """Doubling N should reduce std_error by factor ~ sqrt(2) ~ 1.41."""
         mc1 = MonteCarloEngine(n_paths=100_000, seed=MC_SEED)
         mc2 = MonteCarloEngine(n_paths=200_000, seed=MC_SEED)
 
-        r1 = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
-        r2 = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        r1 = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
+        r2 = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
 
         ratio = r1.std_error / r2.std_error
         # Should be ~ sqrt(2) = 1.414, allow 20% tolerance
@@ -751,14 +759,14 @@ class TestConfidenceIntervals:
         CLT approximation error).
         """
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        true_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        true_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
         n_reps = 100
         n_paths = 50_000
         covered = 0
 
         for i in range(n_reps):
             mc = MonteCarloEngine(n_paths=n_paths, seed=i * 1000 + 1)
-            result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+            result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
             if result.ci_lower <= true_price <= result.ci_upper:
                 covered += 1
 
@@ -766,21 +774,17 @@ class TestConfidenceIntervals:
         # With N=50_000 paths, CLT is excellent. Under H0: true coverage = 0.95,
         # P(coverage < 0.92 | n_reps=100) < 0.05 by binomial test.
         # Threshold 0.88 was too permissive for a production-grade engine.
-        assert coverage >= 0.92, (
-            f"CI coverage = {coverage:.2%}, expected >= 92%"
-        )
+        assert coverage >= 0.92, f"CI coverage = {coverage:.2%}, expected >= 92%"
 
     def test_ci_narrows_with_n(self):
         """CI width should decrease with N."""
         widths = []
         for n in [10_000, 50_000, 200_000]:
             mc = MonteCarloEngine(n_paths=n, seed=MC_SEED)
-            result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+            result = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
             widths.append(result.ci_upper - result.ci_lower)
 
-        assert widths[0] > widths[1] > widths[2], (
-            f"CI widths should decrease: {widths}"
-        )
+        assert widths[0] > widths[1] > widths[2], f"CI widths should decrease: {widths}"
 
 
 # ============================================================================
@@ -793,8 +797,8 @@ class TestReproducibility:
         mc1 = MonteCarloEngine(n_paths=50_000, seed=42)
         mc2 = MonteCarloEngine(n_paths=50_000, seed=42)
 
-        r1 = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
-        r2 = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        r1 = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
+        r2 = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
 
         assert r1.price == r2.price, f"Same seed gave different prices: {r1.price} vs {r2.price}"
         assert r1.std_error == r2.std_error
@@ -803,8 +807,8 @@ class TestReproducibility:
         mc1 = MonteCarloEngine(n_paths=50_000, seed=42)
         mc2 = MonteCarloEngine(n_paths=50_000, seed=99)
 
-        r1 = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
-        r2 = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        r1 = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
+        r2 = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
 
         assert r1.price != r2.price, "Different seeds should give different prices"
 
@@ -820,18 +824,18 @@ class TestReproducibility:
     def test_reset_restores_state(self):
         """reset() restores RNG to initial state — same results after reset."""
         mc = MonteCarloEngine(n_paths=50_000, seed=42)
-        r1 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        r1 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         mc.reset()
-        r2 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        r2 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         assert r1.price == r2.price
         assert r1.std_error == r2.std_error
 
     def test_reset_with_new_seed(self):
         """reset(seed=new) changes the seed and produces different results."""
         mc = MonteCarloEngine(n_paths=50_000, seed=42)
-        r1 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        r1 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         mc.reset(seed=99)
-        r2 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        r2 = mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         assert r1.price != r2.price
         assert mc.seed == 99
 
@@ -859,12 +863,12 @@ class TestEdgeCases:
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
         # ITM call (S=100, K=95): intrinsic ~ 5
-        result = mc.price_european(100, 95, T, HULL_R, HULL_SIGMA, 'call')
+        result = mc.price_european(100, 95, T, HULL_R, HULL_SIGMA, "call")
         intrinsic = max(100 - 95 * np.exp(-HULL_R * T), 0)
         assert abs(result.price - intrinsic) < 0.5
 
         # OTM call (S=100, K=110): intrinsic = 0
-        result = mc.price_european(100, 110, T, HULL_R, HULL_SIGMA, 'call')
+        result = mc.price_european(100, 110, T, HULL_R, HULL_SIGMA, "call")
         assert result.price < 0.5
 
     def test_low_vol(self):
@@ -874,7 +878,7 @@ class TestEdgeCases:
         """
         sigma = 0.001
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(100, 95, HULL_T, HULL_R, sigma, 'call')
+        result = mc.price_european(100, 95, HULL_T, HULL_R, sigma, "call")
 
         forward = 100 * np.exp(HULL_R * HULL_T)
         expected = np.exp(-HULL_R * HULL_T) * max(forward - 95, 0)
@@ -883,20 +887,20 @@ class TestEdgeCases:
     def test_deep_itm_call(self):
         """Deep ITM call: price ~ S - K*e^{-rT}."""
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(200, 100, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        result = mc.price_european(200, 100, HULL_T, HULL_R, HULL_SIGMA, "call")
         lower_bound = 200 - 100 * np.exp(-HULL_R * HULL_T)
         assert result.price > lower_bound * 0.95  # within 5% of intrinsic
 
     def test_deep_otm_call(self):
         """Deep OTM call: price ~ 0 with std_error possibly > price."""
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(100, 200, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        result = mc.price_european(100, 200, HULL_T, HULL_R, HULL_SIGMA, "call")
         assert result.price < 0.5  # essentially zero
 
     def test_deep_itm_put(self):
         """Deep ITM put: price ~ K*e^{-rT} - S."""
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
-        result = mc.price_european(50, 100, HULL_T, HULL_R, HULL_SIGMA, 'put')
+        result = mc.price_european(50, 100, HULL_T, HULL_R, HULL_SIGMA, "put")
         lower_bound = 100 * np.exp(-HULL_R * HULL_T) - 50
         assert result.price > lower_bound * 0.90
 
@@ -910,7 +914,7 @@ class TestEdgeCases:
         with pytest.raises(ValueError):
             mc.simulate_gbm(HULL_S, HULL_T, HULL_R, -0.1)
         with pytest.raises(ValueError):
-            mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='invalid')
+            mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="invalid")
 
     def test_invalid_engine_params(self):
         with pytest.raises(ValueError, match="n_paths must be >= 2"):
@@ -924,15 +928,15 @@ class TestEdgeCases:
         """price_european should reject invalid S0, K, T, sigma."""
         mc = MonteCarloEngine(n_paths=100, seed=MC_SEED)
         with pytest.raises(ValueError):
-            mc.price_european(-100, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+            mc.price_european(-100, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
         with pytest.raises(ValueError):
-            mc.price_european(HULL_S, -1, HULL_T, HULL_R, HULL_SIGMA, 'call')
+            mc.price_european(HULL_S, -1, HULL_T, HULL_R, HULL_SIGMA, "call")
         with pytest.raises(ValueError):
-            mc.price_european(HULL_S, HULL_K, -1, HULL_R, HULL_SIGMA, 'call')
+            mc.price_european(HULL_S, HULL_K, -1, HULL_R, HULL_SIGMA, "call")
         with pytest.raises(ValueError):
-            mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, -0.1, 'call')
+            mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, -0.1, "call")
         with pytest.raises(ValueError):
-            mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'straddle')
+            mc.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "straddle")
 
     def test_option_type_shorthand(self):
         """'c' and 'p' are accepted as shorthand for 'call' and 'put'."""
@@ -941,10 +945,10 @@ class TestEdgeCases:
         mc3 = MonteCarloEngine(n_paths=10_000, seed=MC_SEED)
         mc4 = MonteCarloEngine(n_paths=10_000, seed=MC_SEED)
 
-        call_full = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
-        call_short = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'c')
-        put_full = mc3.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put')
-        put_short = mc4.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'p')
+        call_full = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
+        call_short = mc2.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "c")
+        put_full = mc3.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "put")
+        put_short = mc4.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "p")
 
         assert call_full.price == call_short.price
         assert put_full.price == put_short.price
@@ -959,9 +963,9 @@ class TestEdgeCases:
         """Engine repr should show n_paths, n_steps, seed."""
         mc = MonteCarloEngine(n_paths=50_000, n_steps=252, seed=42)
         r = repr(mc)
-        assert '50,000' in r
-        assert '252' in r
-        assert '42' in r
+        assert "50,000" in r
+        assert "252" in r
+        assert "42" in r
 
 
 # ============================================================================
@@ -981,7 +985,7 @@ class TestPropertyBased:
     def test_price_non_negative(self, S, K, T, r, sigma):
         """MC price must be >= 0 for all valid inputs."""
         mc = MonteCarloEngine(n_paths=5_000, seed=MC_SEED)
-        for opt in ('call', 'put'):
+        for opt in ("call", "put"):
             result = mc.price_european(S, K, T, r, sigma, opt)
             assert result.price >= -result.std_error * 3, (
                 f"Negative price: {result.price:.6f} for {opt} "
@@ -1008,7 +1012,7 @@ class TestPropertyBased:
         error is from discounting, which is deterministic.
         """
         mc = MonteCarloEngine(n_paths=50_000, n_steps=1, seed=MC_SEED)
-        paths = mc.simulate_gbm(S, T, r, sigma, scheme='exact')
+        paths = mc.simulate_gbm(S, T, r, sigma, scheme="exact")
         ST = paths[:, -1]
 
         discount = np.exp(-r * T)
@@ -1063,8 +1067,8 @@ class TestPropertyBased:
         mc_plain = MonteCarloEngine(n_paths=20_000, seed=MC_SEED)
         mc_anti = MonteCarloEngine(n_paths=20_000, seed=MC_SEED)
 
-        plain = mc_plain.price_european(S, K, T, r, sigma, 'call')
-        anti = mc_anti.price_european(S, K, T, r, sigma, 'call', antithetic=True)
+        plain = mc_plain.price_european(S, K, T, r, sigma, "call")
+        anti = mc_anti.price_european(S, K, T, r, sigma, "call", antithetic=True)
 
         # Allow 15% margin for sampling noise in variance estimator
         assert anti.std_error <= plain.std_error * 1.15, (
@@ -1137,16 +1141,16 @@ class TestMCResult:
 
     def test_frozen(self):
         """MCResult should be immutable."""
-        result = MCResult(10.0, 0.01, 9.98, 10.02, 100_000, 'none')
+        result = MCResult(10.0, 0.01, 9.98, 10.02, 100_000, "none")
         with pytest.raises(AttributeError):
             result.price = 20.0  # type: ignore[misc]
 
     def test_repr(self):
-        result = MCResult(10.4506, 0.0234, 10.4047, 10.4965, 100_000, 'antithetic')
+        result = MCResult(10.4506, 0.0234, 10.4047, 10.4965, 100_000, "antithetic")
         r = repr(result)
-        assert 'MCResult' in r
-        assert '10.4506' in r
-        assert 'antithetic' in r
+        assert "MCResult" in r
+        assert "10.4506" in r
+        assert "antithetic" in r
 
 
 # ============================================================================
@@ -1160,9 +1164,9 @@ class TestGenericPrice:
         mc1 = MonteCarloEngine(n_paths=100_000, n_steps=1, seed=MC_SEED)
         mc2 = MonteCarloEngine(n_paths=100_000, n_steps=1, seed=MC_SEED)
 
-        direct = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call')
+        direct = mc1.price_european(HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, "call")
 
-        paths = mc2.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme='exact')
+        paths = mc2.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, scheme="exact")
         generic = mc2.price(lambda p: np.maximum(p[:, -1] - HULL_K, 0), paths, HULL_R, HULL_T)
 
         assert abs(direct.price - generic.price) < 0.1
@@ -1177,18 +1181,22 @@ class TestGenericPrice:
     def test_convergence_analysis(self):
         mc = MonteCarloEngine(n_paths=10_000, seed=MC_SEED)
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        ref = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        ref = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
 
         result = mc.convergence_analysis(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
             path_counts=[1_000, 5_000, 10_000],
             reference_price=ref,
         )
 
-        assert len(result['prices']) == 3
-        assert len(result['std_errors']) == 3
-        assert len(result['errors']) == 3
-        assert result['reference_price'] == ref
+        assert len(result["prices"]) == 3
+        assert len(result["std_errors"]) == 3
+        assert len(result["errors"]) == 3
+        assert result["reference_price"] == ref
 
     def test_convergence_analysis_with_vr(self):
         """convergence_analysis with VR should yield lower std_errors."""
@@ -1197,35 +1205,52 @@ class TestGenericPrice:
         counts = [5_000, 10_000, 50_000]
 
         plain = mc_plain.convergence_analysis(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
             path_counts=counts,
         )
         with_vr = mc_vr.convergence_analysis(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
             path_counts=counts,
-            antithetic=True, control_variate=True,
+            antithetic=True,
+            control_variate=True,
         )
 
-        assert with_vr['variance_reduction'] == 'antithetic+control'
+        assert with_vr["variance_reduction"] == "antithetic+control"
         # VR should reduce std_error at every path count
-        for se_plain, se_vr in zip(plain['std_errors'], with_vr['std_errors']):
+        for se_plain, se_vr in zip(plain["std_errors"], with_vr["std_errors"]):
             assert se_vr < se_plain
 
     def test_convergence_analysis_default_path_counts(self):
         """convergence_analysis uses sensible defaults when path_counts is None."""
         mc = MonteCarloEngine(n_paths=10_000, seed=MC_SEED)
         result = mc.convergence_analysis(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
         )
-        assert result['path_counts'] == [1_000, 5_000, 10_000, 50_000, 100_000, 500_000]
-        assert len(result['prices']) == 6
+        assert result["path_counts"] == [1_000, 5_000, 10_000, 50_000, 100_000, 500_000]
+        assert len(result["prices"]) == 6
 
     def test_convergence_analysis_empty_path_counts(self):
         """convergence_analysis rejects empty path_counts."""
         mc = MonteCarloEngine(n_paths=10_000, seed=MC_SEED)
         with pytest.raises(ValueError, match="must not be empty"):
             mc.convergence_analysis(
-                HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA,
+                HULL_S,
+                HULL_K,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
                 path_counts=[],
             )
 
@@ -1240,7 +1265,11 @@ class TestGenericPriceVR:
         """simulate_gbm(antithetic=True) returns tuple of correct shapes."""
         mc = MonteCarloEngine(n_paths=1_000, n_steps=50, seed=MC_SEED)
         paths_pos, paths_neg = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, antithetic=True,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            antithetic=True,
         )
         assert paths_pos.shape == (1_000, 51)
         assert paths_neg.shape == (1_000, 51)
@@ -1257,7 +1286,11 @@ class TestGenericPriceVR:
         """
         mc = MonteCarloEngine(n_paths=1_000, n_steps=1, seed=MC_SEED)
         paths_pos, paths_neg = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, antithetic=True,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            antithetic=True,
         )
         log_pos = np.log(paths_pos[:, -1] / HULL_S)
         log_neg = np.log(paths_neg[:, -1] / HULL_S)
@@ -1274,7 +1307,11 @@ class TestGenericPriceVR:
         """Antithetic paths work correctly with multiple time steps."""
         mc = MonteCarloEngine(n_paths=5_000, n_steps=100, seed=MC_SEED)
         paths_pos, paths_neg = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, antithetic=True,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            antithetic=True,
         )
         # Both should have correct shape
         assert paths_pos.shape == (5_000, 101)
@@ -1290,16 +1327,23 @@ class TestGenericPriceVR:
         """price() with paths_anti is unbiased for call payoff."""
         mc = MonteCarloEngine(n_paths=MC_PATHS, n_steps=1, seed=MC_SEED)
         paths, paths_anti = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, antithetic=True,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            antithetic=True,
         )
         result = mc.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0),
-            paths, HULL_R, HULL_T, paths_anti=paths_anti,
+            paths,
+            HULL_R,
+            HULL_T,
+            paths_anti=paths_anti,
         )
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
-        assert result.variance_reduction == 'antithetic'
+        assert result.variance_reduction == "antithetic"
 
     def test_price_control_fn_reduces_variance(self):
         """price() with control_fn reduces std_error vs plain MC."""
@@ -1311,7 +1355,9 @@ class TestGenericPriceVR:
 
         plain = mc_plain.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0),
-            paths_plain, HULL_R, HULL_T,
+            paths_plain,
+            HULL_R,
+            HULL_T,
         )
 
         discount = np.exp(-HULL_R * HULL_T)
@@ -1321,18 +1367,24 @@ class TestGenericPriceVR:
 
         cv = mc_cv.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0),
-            paths_cv, HULL_R, HULL_T,
+            paths_cv,
+            HULL_R,
+            HULL_T,
             control_fn=ctrl,
         )
 
         assert cv.std_error < plain.std_error
-        assert cv.variance_reduction == 'control'
+        assert cv.variance_reduction == "control"
 
     def test_price_combined_vr(self):
         """price() with antithetic + control gives best variance reduction."""
         mc = MonteCarloEngine(n_paths=MC_PATHS, n_steps=1, seed=MC_SEED)
         paths, paths_anti = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, antithetic=True,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            antithetic=True,
         )
 
         discount = np.exp(-HULL_R * HULL_T)
@@ -1343,13 +1395,16 @@ class TestGenericPriceVR:
 
         result = mc.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0),
-            paths, HULL_R, HULL_T,
-            paths_anti=paths_anti, control_fn=ctrl,
+            paths,
+            HULL_R,
+            HULL_T,
+            paths_anti=paths_anti,
+            control_fn=ctrl,
         )
 
-        assert result.variance_reduction == 'antithetic+control'
+        assert result.variance_reduction == "antithetic+control"
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        analytical = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
         assert abs(result.price - analytical) < max(0.05, 3 * result.std_error)
 
     def test_price_european_delegates_to_price(self):
@@ -1361,12 +1416,19 @@ class TestGenericPriceVR:
         mc2 = MonteCarloEngine(n_paths=50_000, n_steps=1, seed=MC_SEED)
 
         direct = mc1.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
         )
         paths = mc2.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA)
         generic = mc2.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0),
-            paths, HULL_R, HULL_T,
+            paths,
+            HULL_R,
+            HULL_T,
         )
 
         assert direct.price == generic.price
@@ -1391,7 +1453,7 @@ class TestGenericPriceVR:
         asian = mc.price(asian_call_payoff, paths, HULL_R, HULL_T)
 
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        european = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        european = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
 
         assert asian.price > 0
         assert asian.price < european + 3 * asian.std_error
@@ -1406,13 +1468,15 @@ class TestQuasiMonteCarlo:
     def test_qmc_price_unbiased(self):
         """QMC European call price is consistent with BS analytical."""
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
 
         mc = MonteCarloEngine(n_paths=50_000, seed=42)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, quasi=True, n_steps=1)
         result = mc.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0.0),
-            paths, HULL_R, HULL_T,
+            paths,
+            HULL_R,
+            HULL_T,
         )
         assert abs(result.price - bs_price) < 0.10
 
@@ -1422,20 +1486,33 @@ class TestQuasiMonteCarlo:
 
         mc_pseudo = MonteCarloEngine(n_paths=n_paths, seed=42)
         paths_pseudo = mc_pseudo.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            n_steps=1,
         )
         result_pseudo = mc_pseudo.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0.0),
-            paths_pseudo, HULL_R, HULL_T,
+            paths_pseudo,
+            HULL_R,
+            HULL_T,
         )
 
         mc_qmc = MonteCarloEngine(n_paths=n_paths, seed=42)
         paths_qmc = mc_qmc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, quasi=True, n_steps=1,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            quasi=True,
+            n_steps=1,
         )
         result_qmc = mc_qmc.price(
             lambda p: np.maximum(p[:, -1] - HULL_K, 0.0),
-            paths_qmc, HULL_R, HULL_T,
+            paths_qmc,
+            HULL_R,
+            HULL_T,
         )
 
         # QMC std_error should be noticeably lower
@@ -1453,7 +1530,13 @@ class TestQuasiMonteCarlo:
         """QMC + antithetic produces valid paired paths."""
         mc = MonteCarloEngine(n_paths=100, seed=42)
         paths, paths_anti = mc.simulate_gbm(
-            100, 1.0, 0.05, 0.20, quasi=True, n_steps=1, antithetic=True,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            quasi=True,
+            n_steps=1,
+            antithetic=True,
         )
         assert paths.shape == paths_anti.shape
         assert paths.shape == (100, 2)
@@ -1506,11 +1589,16 @@ class TestImportanceSampling:
     def test_is_price_unbiased_atm(self):
         """IS should give correct price for ATM options."""
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
 
         mc = MonteCarloEngine(n_paths=200_000, seed=42)
         result = mc.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
             importance_sampling=True,
         )
         assert abs(result.price - bs_price) < 4 * result.std_error
@@ -1521,11 +1609,17 @@ class TestImportanceSampling:
         n_paths = 100_000
 
         mc_plain = MonteCarloEngine(n_paths=n_paths, seed=42)
-        result_plain = mc_plain.price_european(S, K, T, r, sigma, 'call')
+        result_plain = mc_plain.price_european(S, K, T, r, sigma, "call")
 
         mc_is = MonteCarloEngine(n_paths=n_paths, seed=42)
         result_is = mc_is.price_european(
-            S, K, T, r, sigma, 'call', importance_sampling=True,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            "call",
+            importance_sampling=True,
         )
 
         # IS should have much lower std_error for deep OTM
@@ -1535,11 +1629,17 @@ class TestImportanceSampling:
         """IS for deep OTM put should match BS price."""
         S, K, T, r, sigma = 100, 60, 1.0, 0.05, 0.20
         bs = BlackScholesModel(sigma=sigma)
-        bs_price = bs.price(S, K, T, r, 'put')
+        bs_price = bs.price(S, K, T, r, "put")
 
         mc = MonteCarloEngine(n_paths=200_000, seed=42)
         result = mc.price_european(
-            S, K, T, r, sigma, 'put', importance_sampling=True,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            "put",
+            importance_sampling=True,
         )
         assert abs(result.price - bs_price) < 4 * result.std_error
 
@@ -1548,19 +1648,31 @@ class TestImportanceSampling:
         mc = MonteCarloEngine(n_paths=1000, seed=42)
         with pytest.raises(ValueError, match="importance_sampling and antithetic"):
             mc.price_european(
-                100, 100, 1.0, 0.05, 0.20, 'call',
-                importance_sampling=True, antithetic=True,
+                100,
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                importance_sampling=True,
+                antithetic=True,
             )
 
     def test_is_with_control_variate(self):
         """IS + control variate should produce valid results."""
         bs = BlackScholesModel(sigma=HULL_SIGMA)
-        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, 'call')
+        bs_price = bs.price(HULL_S, HULL_K, HULL_T, HULL_R, "call")
 
         mc = MonteCarloEngine(n_paths=100_000, seed=42)
         result = mc.price_european(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call',
-            importance_sampling=True, control_variate=True,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            importance_sampling=True,
+            control_variate=True,
         )
         assert abs(result.price - bs_price) < 4 * result.std_error
         assert result.variance_reduction == "importance+control"
@@ -1569,7 +1681,13 @@ class TestImportanceSampling:
         """IS variance reduction label is correct."""
         mc = MonteCarloEngine(n_paths=1000, seed=42)
         result = mc.price_european(
-            100, 100, 1.0, 0.05, 0.20, 'call', importance_sampling=True,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            importance_sampling=True,
         )
         assert result.variance_reduction == "importance"
 
@@ -1585,23 +1703,33 @@ class TestEulerAbsorption:
         # High vol + few steps maximizes chance of negative S
         mc = MonteCarloEngine(n_paths=10_000, n_steps=10, seed=42)
         paths = mc.simulate_gbm(
-            100, 1.0, 0.05, 2.0, scheme='euler', absorb=True,
+            100,
+            1.0,
+            0.05,
+            2.0,
+            scheme="euler",
+            absorb=True,
         )
         assert np.all(paths >= 0.0)
 
     def test_absorb_no_effect_on_exact_scheme(self):
         """Exact scheme always produces positive paths; absorb is irrelevant."""
         mc = MonteCarloEngine(n_paths=1000, n_steps=10, seed=42)
-        paths1 = mc.simulate_gbm(100, 1.0, 0.05, 0.20, scheme='exact')
+        paths1 = mc.simulate_gbm(100, 1.0, 0.05, 0.20, scheme="exact")
         mc.reset()
-        paths2 = mc.simulate_gbm(100, 1.0, 0.05, 0.20, scheme='exact', absorb=True)
+        paths2 = mc.simulate_gbm(100, 1.0, 0.05, 0.20, scheme="exact", absorb=True)
         np.testing.assert_array_equal(paths1, paths2)
 
     def test_absorb_false_can_produce_negative(self):
         """Without absorb, high-vol Euler may produce negative prices."""
         mc = MonteCarloEngine(n_paths=50_000, n_steps=5, seed=42)
         paths = mc.simulate_gbm(
-            100, 1.0, 0.05, 3.0, scheme='euler', absorb=False,
+            100,
+            1.0,
+            0.05,
+            3.0,
+            scheme="euler",
+            absorb=False,
         )
         # With sigma=3.0 and 5 steps, very likely to get some negatives
         assert np.any(paths < 0)
@@ -1610,7 +1738,12 @@ class TestEulerAbsorption:
         """S_0 column is unchanged with absorb."""
         mc = MonteCarloEngine(n_paths=100, n_steps=10, seed=42)
         paths = mc.simulate_gbm(
-            100, 1.0, 0.05, 1.0, scheme='euler', absorb=True,
+            100,
+            1.0,
+            0.05,
+            1.0,
+            scheme="euler",
+            absorb=True,
         )
         assert np.all(paths[:, 0] == 100.0)
 
@@ -1627,17 +1760,13 @@ class TestBatchPricing:
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
 
         strikes = [90.0, 95.0, 100.0, 105.0, 110.0]
-        payoff_fns = [
-            lambda p, K=K: np.maximum(p[:, -1] - K, 0.0) for K in strikes
-        ]
+        payoff_fns = [lambda p, K=K: np.maximum(p[:, -1] - K, 0.0) for K in strikes]
 
         # Batch
         batch_results = mc.price_batch(payoff_fns, paths, HULL_R, HULL_T)
 
         # Individual (on SAME paths — no re-simulation)
-        individual_results = [
-            mc.price(pf, paths, HULL_R, HULL_T) for pf in payoff_fns
-        ]
+        individual_results = [mc.price(pf, paths, HULL_R, HULL_T) for pf in payoff_fns]
 
         assert len(batch_results) == len(strikes)
         for br, ir in zip(batch_results, individual_results):
@@ -1648,7 +1777,12 @@ class TestBatchPricing:
         """Batch pricing with shared antithetic paths."""
         mc = MonteCarloEngine(n_paths=50_000, seed=42)
         paths, paths_anti = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1, antithetic=True,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            n_steps=1,
+            antithetic=True,
         )
 
         payoff_fns = [
@@ -1658,7 +1792,11 @@ class TestBatchPricing:
         ]
 
         results = mc.price_batch(
-            payoff_fns, paths, HULL_R, HULL_T, paths_anti=paths_anti,
+            payoff_fns,
+            paths,
+            HULL_R,
+            HULL_T,
+            paths_anti=paths_anti,
         )
         assert len(results) == 3
         assert all(r.variance_reduction == "antithetic" for r in results)
@@ -1672,14 +1810,12 @@ class TestBatchPricing:
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
 
         strikes = [90.0, 100.0, 110.0]
-        payoff_fns = [
-            lambda p, K=K: np.maximum(p[:, -1] - K, 0.0) for K in strikes
-        ]
+        payoff_fns = [lambda p, K=K: np.maximum(p[:, -1] - K, 0.0) for K in strikes]
 
         results = mc.price_batch(payoff_fns, paths, HULL_R, HULL_T)
 
         for K, result in zip(strikes, results):
-            bs_price = bs.price(HULL_S, K, HULL_T, HULL_R, 'call')
+            bs_price = bs.price(HULL_S, K, HULL_T, HULL_R, "call")
             assert abs(result.price - bs_price) < 4 * result.std_error
 
     def test_batch_empty_list(self):

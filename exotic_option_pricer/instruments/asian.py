@@ -168,21 +168,15 @@ class AsianOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         avg = avg_type.strip().lower()
         if avg not in ("arithmetic", "geometric"):
-            raise ValueError(
-                f"avg_type must be 'arithmetic' or 'geometric', got '{avg_type}'"
-            )
+            raise ValueError(f"avg_type must be 'arithmetic' or 'geometric', got '{avg_type}'")
 
         stk = strike_type.strip().lower()
         if stk not in ("fixed", "floating"):
-            raise ValueError(
-                f"strike_type must be 'fixed' or 'floating', got '{strike_type}'"
-            )
+            raise ValueError(f"strike_type must be 'fixed' or 'floating', got '{strike_type}'")
 
         if stk == "fixed":
             if K is None:
@@ -339,9 +333,7 @@ class AsianOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         n = float(n_obs)
         sigma_hat_sq = sigma * sigma * (n + 1.0) * (2.0 * n + 1.0) / (6.0 * n * n)
@@ -354,12 +346,8 @@ class AsianOption(ExoticOption):
         adj = np.exp((r_hat - r) * T)
 
         if opt == "call":
-            return float(
-                adj * (S * ndtr(d1) - K * np.exp(-r_hat * T) * ndtr(d2))
-            )
-        return float(
-            adj * (K * np.exp(-r_hat * T) * ndtr(-d2) - S * ndtr(-d1))
-        )
+            return float(adj * (S * ndtr(d1) - K * np.exp(-r_hat * T) * ndtr(d2)))
+        return float(adj * (K * np.exp(-r_hat * T) * ndtr(-d2) - S * ndtr(-d1)))
 
     def geometric_control_fn(
         self,
@@ -435,7 +423,14 @@ class AsianOption(ExoticOption):
         K = self.K
         opt = self._option_type
         analytical = AsianOption.geometric_price(
-            S0, K, T, r, sigma, n_obs, opt, q,
+            S0,
+            K,
+            T,
+            r,
+            sigma,
+            n_obs,
+            opt,
+            q,
         )
         discount = float(np.exp(-r * T))
 
@@ -455,10 +450,7 @@ class AsianOption(ExoticOption):
                 f"AsianOption(K={self.K}, type='{self._option_type}', "
                 f"avg='{self._avg_type}', strike='fixed')"
             )
-        return (
-            f"AsianOption(type='{self._option_type}', "
-            f"avg='{self._avg_type}', strike='floating')"
-        )
+        return f"AsianOption(type='{self._option_type}', avg='{self._avg_type}', strike='floating')"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, AsianOption):
@@ -471,6 +463,4 @@ class AsianOption(ExoticOption):
         )
 
     def __hash__(self) -> int:
-        return hash(
-            (self.K, self._option_type, self._avg_type, self._strike_type)
-        )
+        return hash((self.K, self._option_type, self._avg_type, self._strike_type))

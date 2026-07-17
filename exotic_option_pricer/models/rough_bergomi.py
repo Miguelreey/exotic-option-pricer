@@ -171,22 +171,33 @@ class RoughBergomiModel(PricingModel):
     >>> res = engine.price(lambda p: np.maximum(p[:, -1] - 100, 0), paths, 0.05, 1.0)
     """
 
-    def __init__(self, xi0: float, eta: float, H: float, rho: float, *,
-                 mc_paths: int = 131072, mc_steps: int = 256,
-                 seed: int = 42) -> None:
+    def __init__(
+        self,
+        xi0: float,
+        eta: float,
+        H: float,
+        rho: float,
+        *,
+        mc_paths: int = 131072,
+        mc_steps: int = 256,
+        seed: int = 42,
+    ) -> None:
         params = {"xi0": xi0, "eta": eta, "H": H, "rho": rho}
         for name, value in params.items():
             if not np.isfinite(value):
                 raise ValueError(f"{name} must be finite, got {value}")
         if xi0 <= 0:
-            raise ValueError(f"xi0 must be > 0, got {xi0}. "
-                             f"Note: xi0 is a variance — for 20% vol use 0.04.")
+            raise ValueError(
+                f"xi0 must be > 0, got {xi0}. Note: xi0 is a variance — for 20% vol use 0.04."
+            )
         if eta <= 0:
             raise ValueError(f"eta must be > 0, got {eta}")
         if not 0.0 < H <= 0.5:
-            raise ValueError(f"H must be in (0, 0.5], got {H}. "
-                             f"H < 0.5 is rough vol; H = 0.5 is classical "
-                             f"lognormal vol; H > 0.5 is not supported.")
+            raise ValueError(
+                f"H must be in (0, 0.5], got {H}. "
+                f"H < 0.5 is rough vol; H = 0.5 is classical "
+                f"lognormal vol; H > 0.5 is not supported."
+            )
         if not -1.0 < rho < 1.0:
             raise ValueError(f"rho must be in (-1, 1), got {rho}")
         if mc_paths < 2:
@@ -244,12 +255,10 @@ class RoughBergomiModel(PricingModel):
         if lo == hi:
             # weight (t-u)^(2*gamma), integrand 1 — QAWS handles the
             # (integrable) singularity 2*gamma in (-1, 0) exactly
-            val, _ = quad(lambda u: 1.0, 0.0, lo,
-                          weight='alg', wvar=(0.0, 2.0 * gamma))
+            val, _ = quad(lambda u: 1.0, 0.0, lo, weight="alg", wvar=(0.0, 2.0 * gamma))
         else:
             # weight (lo-u)^gamma; (hi-u)^gamma is smooth on [0, lo]
-            val, _ = quad(lambda u: (hi - u) ** gamma, 0.0, lo,
-                          weight='alg', wvar=(0.0, gamma))
+            val, _ = quad(lambda u: (hi - u) ** gamma, 0.0, lo, weight="alg", wvar=(0.0, gamma))
         return float(2.0 * self.H * val)
 
     # ──────────────────────────────────────────────
@@ -257,7 +266,10 @@ class RoughBergomiModel(PricingModel):
     # ──────────────────────────────────────────────
 
     def _simulate_volterra_cholesky(
-        self, T: float, n_steps: int, n_paths: int,
+        self,
+        T: float,
+        n_steps: int,
+        n_paths: int,
         rng: np.random.Generator,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -313,7 +325,10 @@ class RoughBergomiModel(PricingModel):
     # ──────────────────────────────────────────────
 
     def _simulate_volterra_hybrid(
-        self, T: float, n_steps: int, n_paths: int,
+        self,
+        T: float,
+        n_steps: int,
+        n_paths: int,
         rng: np.random.Generator,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -383,21 +398,24 @@ class RoughBergomiModel(PricingModel):
         V_tilde = np.sqrt(2.0 * H) * W1
         if n >= 2:
             k = np.arange(2, n + 1, dtype=np.float64)
-            b = ((k ** (gamma + 1.0) - (k - 1.0) ** (gamma + 1.0))
-                 / (gamma + 1.0)) ** (1.0 / gamma)
+            b = ((k ** (gamma + 1.0) - (k - 1.0) ** (gamma + 1.0)) / (gamma + 1.0)) ** (1.0 / gamma)
             G = (b * dt) ** gamma
             conv = fftconvolve(dB, G[None, :], axes=1)
             V_tilde[:, 1:] += np.sqrt(2.0 * H) * conv[:, : n - 1]
         return V_tilde, dB
 
     def _volterra(
-        self, T: float, n_steps: int, n_paths: int, method: str,
+        self,
+        T: float,
+        n_steps: int,
+        n_paths: int,
+        method: str,
         rng: np.random.Generator,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Dispatch to the chosen Volterra simulation method."""
-        if method == 'hybrid':
+        if method == "hybrid":
             return self._simulate_volterra_hybrid(T, n_steps, n_paths, rng)
-        elif method == 'cholesky':
+        elif method == "cholesky":
             return self._simulate_volterra_cholesky(T, n_steps, n_paths, rng)
         raise ValueError(f"method must be 'hybrid' or 'cholesky', got '{method}'")
 
@@ -405,9 +423,9 @@ class RoughBergomiModel(PricingModel):
     # From Volterra to variance and spot paths
     # ──────────────────────────────────────────────
 
-    def _variance_path(self, V_tilde: np.ndarray, T: float, *,
-                       xi0: float | None = None,
-                       eta: float | None = None) -> np.ndarray:
+    def _variance_path(
+        self, V_tilde: np.ndarray, T: float, *, xi0: float | None = None, eta: float | None = None
+    ) -> np.ndarray:
         """
         Variance on the full grid t_0..t_n from the Volterra values at
         t_1..t_n:
@@ -429,13 +447,18 @@ class RoughBergomiModel(PricingModel):
         t = (T / n) * np.arange(1, n + 1, dtype=np.float64)
         v = np.empty((V_tilde.shape[0], n + 1), dtype=np.float64)
         v[:, 0] = xi0
-        v[:, 1:] = xi0 * np.exp(eta * V_tilde
-                                - 0.5 * eta * eta * t ** (2.0 * self.H))
+        v[:, 1:] = xi0 * np.exp(eta * V_tilde - 0.5 * eta * eta * t ** (2.0 * self.H))
         return v
 
     def _spot_from_volterra(
-        self, S0: float, T: float, r: float, q: float,
-        V_tilde: np.ndarray, dB: np.ndarray, dB_perp: np.ndarray,
+        self,
+        S0: float,
+        T: float,
+        r: float,
+        q: float,
+        V_tilde: np.ndarray,
+        dB: np.ndarray,
+        dB_perp: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Left-point log-Euler spot from the Volterra draws:
@@ -462,9 +485,11 @@ class RoughBergomiModel(PricingModel):
         rho = self.rho_sv
         v = self._variance_path(V_tilde, T)
         v_left = v[:, :-1]
-        increments = ((r - q) * dt - 0.5 * v_left * dt
-                      + np.sqrt(v_left) * (rho * dB
-                                           + np.sqrt(1.0 - rho * rho) * dB_perp))
+        increments = (
+            (r - q) * dt
+            - 0.5 * v_left * dt
+            + np.sqrt(v_left) * (rho * dB + np.sqrt(1.0 - rho * rho) * dB_perp)
+        )
         log_S = np.log(S0) + np.cumsum(increments, axis=1)
         paths = np.empty((V_tilde.shape[0], n + 1), dtype=np.float64)
         paths[:, 0] = S0
@@ -476,41 +501,87 @@ class RoughBergomiModel(PricingModel):
     # ──────────────────────────────────────────────
 
     @overload
-    def simulate(self, S0: float, T: float, r: float, q: float = ..., *,
-                 n_paths: int | None = ..., n_steps: int | None = ...,
-                 method: str = ..., antithetic: Literal[False] = ...,
-                 return_variance: Literal[False] = ...,
-                 seed: int | None = ...) -> np.ndarray: ...
+    def simulate(
+        self,
+        S0: float,
+        T: float,
+        r: float,
+        q: float = ...,
+        *,
+        n_paths: int | None = ...,
+        n_steps: int | None = ...,
+        method: str = ...,
+        antithetic: Literal[False] = ...,
+        return_variance: Literal[False] = ...,
+        seed: int | None = ...,
+    ) -> np.ndarray: ...
 
     @overload
-    def simulate(self, S0: float, T: float, r: float, q: float = ..., *,
-                 n_paths: int | None = ..., n_steps: int | None = ...,
-                 method: str = ..., antithetic: Literal[True],
-                 return_variance: Literal[False] = ...,
-                 seed: int | None = ...) -> tuple[np.ndarray, np.ndarray]: ...
+    def simulate(
+        self,
+        S0: float,
+        T: float,
+        r: float,
+        q: float = ...,
+        *,
+        n_paths: int | None = ...,
+        n_steps: int | None = ...,
+        method: str = ...,
+        antithetic: Literal[True],
+        return_variance: Literal[False] = ...,
+        seed: int | None = ...,
+    ) -> tuple[np.ndarray, np.ndarray]: ...
 
     @overload
-    def simulate(self, S0: float, T: float, r: float, q: float = ..., *,
-                 n_paths: int | None = ..., n_steps: int | None = ...,
-                 method: str = ..., antithetic: Literal[False] = ...,
-                 return_variance: Literal[True],
-                 seed: int | None = ...) -> tuple[np.ndarray, np.ndarray]: ...
+    def simulate(
+        self,
+        S0: float,
+        T: float,
+        r: float,
+        q: float = ...,
+        *,
+        n_paths: int | None = ...,
+        n_steps: int | None = ...,
+        method: str = ...,
+        antithetic: Literal[False] = ...,
+        return_variance: Literal[True],
+        seed: int | None = ...,
+    ) -> tuple[np.ndarray, np.ndarray]: ...
 
     @overload
-    def simulate(self, S0: float, T: float, r: float, q: float = ..., *,
-                 n_paths: int | None = ..., n_steps: int | None = ...,
-                 method: str = ..., antithetic: Literal[True],
-                 return_variance: Literal[True],
-                 seed: int | None = ...) -> tuple[tuple[np.ndarray, np.ndarray],
-                                                  tuple[np.ndarray, np.ndarray]]: ...
+    def simulate(
+        self,
+        S0: float,
+        T: float,
+        r: float,
+        q: float = ...,
+        *,
+        n_paths: int | None = ...,
+        n_steps: int | None = ...,
+        method: str = ...,
+        antithetic: Literal[True],
+        return_variance: Literal[True],
+        seed: int | None = ...,
+    ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]: ...
 
-    def simulate(self, S0: float, T: float, r: float, q: float = 0.0, *,
-                 n_paths: int | None = None, n_steps: int | None = None,
-                 method: str = 'hybrid', antithetic: bool = False,
-                 return_variance: bool = False, seed: int | None = None,
-                 ) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray],
-                            tuple[tuple[np.ndarray, np.ndarray],
-                                  tuple[np.ndarray, np.ndarray]]]:
+    def simulate(
+        self,
+        S0: float,
+        T: float,
+        r: float,
+        q: float = 0.0,
+        *,
+        n_paths: int | None = None,
+        n_steps: int | None = None,
+        method: str = "hybrid",
+        antithetic: bool = False,
+        return_variance: bool = False,
+        seed: int | None = None,
+    ) -> Union[
+        np.ndarray,
+        tuple[np.ndarray, np.ndarray],
+        tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]],
+    ]:
         """
         Simulate rBergomi spot paths under Q.
 
@@ -592,8 +663,7 @@ class RoughBergomiModel(PricingModel):
             return (paths, v) if return_variance else paths
 
         # Antithetic: negating all draws is exact by linearity (see above)
-        paths_a, v_a = self._spot_from_volterra(S0, T, r, q,
-                                                -V_tilde, -dB, -dB_perp)
+        paths_a, v_a = self._spot_from_volterra(S0, T, r, q, -V_tilde, -dB, -dB_perp)
         if return_variance:
             return (paths, paths_a), (v, v_a)
         return paths, paths_a
@@ -602,9 +672,15 @@ class RoughBergomiModel(PricingModel):
     # Conditional Black-Scholes estimator (McCrickerd-Pakkanen 2018)
     # ──────────────────────────────────────────────
 
-    def _conditional_terms(self, V_tilde: np.ndarray, dB: np.ndarray,
-                           T: float, *, xi0: float | None = None,
-                           eta: float | None = None) -> _CondDraws:
+    def _conditional_terms(
+        self,
+        V_tilde: np.ndarray,
+        dB: np.ndarray,
+        T: float,
+        *,
+        xi0: float | None = None,
+        eta: float | None = None,
+    ) -> _CondDraws:
         """
         Per-path sufficient statistics of the conditional estimator, with
         the SAME left-point discretization as the path scheme:
@@ -619,14 +695,19 @@ class RoughBergomiModel(PricingModel):
         """
         v_left = self._variance_path(V_tilde, T, xi0=xi0, eta=eta)[:, :-1]
         dt = T / V_tilde.shape[1]
-        A = np.einsum('ij,ij->i', np.sqrt(v_left), dB)
+        A = np.einsum("ij,ij->i", np.sqrt(v_left), dB)
         integrated_var = v_left.sum(axis=1) * dt
         return A, integrated_var
 
-    def _conditional_draws(self, T: float, *, n_paths: int | None = None,
-                           n_steps: int | None = None,
-                           method: str = 'hybrid',
-                           seed: int | None = None) -> _CondDraws:
+    def _conditional_draws(
+        self,
+        T: float,
+        *,
+        n_paths: int | None = None,
+        n_steps: int | None = None,
+        method: str = "hybrid",
+        seed: int | None = None,
+    ) -> _CondDraws:
         """Simulate the Volterra layer and reduce it to (A, I)."""
         n_paths = self.mc_paths if n_paths is None else int(n_paths)
         n_steps = self.mc_steps if n_steps is None else int(n_steps)
@@ -634,10 +715,19 @@ class RoughBergomiModel(PricingModel):
         V_tilde, dB = self._volterra(T, n_steps, n_paths, method, rng)
         return self._conditional_terms(V_tilde, dB, T)
 
-    def _conditional_values(self, S: float, K: float, T: float, r: float,
-                            opt: str, q: float, A: np.ndarray,
-                            int_var: np.ndarray, *,
-                            rho: float | None = None) -> np.ndarray:
+    def _conditional_values(
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        opt: str,
+        q: float,
+        A: np.ndarray,
+        int_var: np.ndarray,
+        *,
+        rho: float | None = None,
+    ) -> np.ndarray:
         """
         Per-path DISCOUNTED conditional Black-Scholes values. Derivation:
         splitting the log-spot into the B-measurable part and the part
@@ -680,14 +770,23 @@ class RoughBergomiModel(PricingModel):
         d1 = (np.log(S_cond / K) + 0.5 * Sigma * Sigma) / Sigma
         d2 = d1 - Sigma
         call_vals: np.ndarray = np.exp(-r * T) * (S_cond * ndtr(d1) - K * ndtr(d2))
-        if opt == 'call':
+        if opt == "call":
             return call_vals
         put_vals: np.ndarray = call_vals - S * np.exp(-q * T) + K * np.exp(-r * T)
         return put_vals
 
-    def _control_adjust(self, vals: np.ndarray, S: float, T: float,
-                        r: float, q: float, A: np.ndarray, int_var: np.ndarray,
-                        *, rho: float | None = None) -> np.ndarray:
+    def _control_adjust(
+        self,
+        vals: np.ndarray,
+        S: float,
+        T: float,
+        r: float,
+        q: float,
+        A: np.ndarray,
+        int_var: np.ndarray,
+        *,
+        rho: float | None = None,
+    ) -> np.ndarray:
         """
         Control-variate completion of the conditional estimator
         (the "turbocharging" of McCrickerd-Pakkanen 2018).
@@ -712,14 +811,23 @@ class RoughBergomiModel(PricingModel):
         """
         rho = self.rho_sv if rho is None else rho
         control = S * np.exp(-q * T + rho * A - 0.5 * rho * rho * int_var)
-        adjusted, _ = control_variate_adjust(vals, control,
-                                             float(S * np.exp(-q * T)))
+        adjusted, _ = control_variate_adjust(vals, control, float(S * np.exp(-q * T)))
         return adjusted
 
-    def _conditional_price(self, S: float, K: float, T: float, r: float,
-                           opt: str, q: float, A: np.ndarray, int_var: np.ndarray,
-                           *, rho: float | None = None,
-                           control_variate: bool = True) -> float:
+    def _conditional_price(
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        opt: str,
+        q: float,
+        A: np.ndarray,
+        int_var: np.ndarray,
+        *,
+        rho: float | None = None,
+        control_variate: bool = True,
+    ) -> float:
         """
         Mean of the per-path conditional values, control-variate adjusted
         by default. Assumes K > 0 like ``_conditional_values`` — every
@@ -732,10 +840,18 @@ class RoughBergomiModel(PricingModel):
         return float(np.mean(vals))
 
     def price_european_conditional(
-        self, S: float, K: float, T: float, r: float,
-        option_type: str = 'call', q: float = 0.0, *,
-        n_paths: int | None = None, n_steps: int | None = None,
-        method: str = 'hybrid', seed: int | None = None,
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        option_type: str = "call",
+        q: float = 0.0,
+        *,
+        n_paths: int | None = None,
+        n_steps: int | None = None,
+        method: str = "hybrid",
+        seed: int | None = None,
         control_variate: bool = True,
     ) -> tuple[float, float]:
         """
@@ -775,9 +891,10 @@ class RoughBergomiModel(PricingModel):
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         if K == 0.0:
-            return (float(S * np.exp(-q * T)) if opt == 'call' else 0.0, 0.0)
-        A, int_var = self._conditional_draws(T, n_paths=n_paths, n_steps=n_steps,
-                                       method=method, seed=seed)
+            return (float(S * np.exp(-q * T)) if opt == "call" else 0.0, 0.0)
+        A, int_var = self._conditional_draws(
+            T, n_paths=n_paths, n_steps=n_steps, method=method, seed=seed
+        )
         vals = self._conditional_values(S, K, T, r, opt, q, A, int_var)
         if control_variate:
             vals = self._control_adjust(vals, S, T, r, q, A, int_var)
@@ -788,13 +905,20 @@ class RoughBergomiModel(PricingModel):
     # ABC price and Greeks
     # ──────────────────────────────────────────────
 
-    def _vectorize(self, kernel: Callable[[float, float, float, float], float],
-                   S: Numeric, K: Numeric, T: Numeric,
-                   r: Numeric) -> Numeric:
+    def _vectorize(
+        self,
+        kernel: Callable[[float, float, float, float], float],
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+    ) -> Numeric:
         """Broadcast (S, K, T, r) and apply a scalar kernel elementwise."""
         S_b, K_b, T_b, r_b = np.broadcast_arrays(
-            np.asarray(S, dtype=np.float64), np.asarray(K, dtype=np.float64),
-            np.asarray(T, dtype=np.float64), np.asarray(r, dtype=np.float64),
+            np.asarray(S, dtype=np.float64),
+            np.asarray(K, dtype=np.float64),
+            np.asarray(T, dtype=np.float64),
+            np.asarray(r, dtype=np.float64),
         )
         if S_b.ndim == 0:
             return kernel(float(S_b), float(K_b), float(T_b), float(r_b))
@@ -816,8 +940,15 @@ class RoughBergomiModel(PricingModel):
             cache[T] = self._conditional_draws(T)
         return cache[T]
 
-    def price(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def price(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         European price via the conditional Black-Scholes estimator.
 
@@ -834,15 +965,18 @@ class RoughBergomiModel(PricingModel):
 
         def kernel(s: float, k: float, t: float, rr: float) -> float:
             if k == 0.0:
-                return float(s * np.exp(-q * t)) if opt == 'call' else 0.0
+                return float(s * np.exp(-q * t)) if opt == "call" else 0.0
             A, int_var = self._draws(t, cache)
             return self._conditional_price(s, k, t, rr, opt, q, A, int_var)
 
         return self._vectorize(kernel, S, K, T, r)
 
-    def _delta_kernel(self, opt: str, q: float,
-                      cache: dict[float, _CondDraws],
-                      ) -> Callable[[float, float, float, float], float]:
+    def _delta_kernel(
+        self,
+        opt: str,
+        q: float,
+        cache: dict[float, _CondDraws],
+    ) -> Callable[[float, float, float, float], float]:
         """
         Delta by exact path rescaling: the rBergomi coefficients do not
         depend on the spot level, so S_cond is proportional to S_0 with
@@ -851,22 +985,28 @@ class RoughBergomiModel(PricingModel):
         smooth function of S (no payoff discontinuity survives the
         conditional-BS smoothing), so h = 1e-3 S is safe.
         """
+
         def kernel(s: float, k: float, t: float, rr: float) -> float:
             h = 1e-3 * s
             if k == 0.0:
-                up = s + h if opt == 'call' else 0.0
-                dn = s - h if opt == 'call' else 0.0
+                up = s + h if opt == "call" else 0.0
+                dn = s - h if opt == "call" else 0.0
                 return float((up - dn) * np.exp(-q * t) / (2.0 * h))
             A, int_var = self._draws(t, cache)
             up = self._conditional_price(s + h, k, t, rr, opt, q, A, int_var)
             dn = self._conditional_price(s - h, k, t, rr, opt, q, A, int_var)
             return (up - dn) / (2.0 * h)
+
         return kernel
 
-    def _gamma_kernel(self, opt: str, q: float,
-                      cache: dict[float, _CondDraws],
-                      ) -> Callable[[float, float, float, float], float]:
+    def _gamma_kernel(
+        self,
+        opt: str,
+        q: float,
+        cache: dict[float, _CondDraws],
+    ) -> Callable[[float, float, float, float], float]:
         """Gamma: second central difference in S on identical draws."""
+
         def kernel(s: float, k: float, t: float, rr: float) -> float:
             if k == 0.0:
                 return 0.0  # zero-strike price is linear in S
@@ -876,11 +1016,15 @@ class RoughBergomiModel(PricingModel):
             mid = self._conditional_price(s, k, t, rr, opt, q, A, int_var)
             dn = self._conditional_price(s - h, k, t, rr, opt, q, A, int_var)
             return (up - 2.0 * mid + dn) / (h * h)
+
         return kernel
 
-    def _vega_kernel(self, opt: str, q: float,
-                     cache: dict[float, _CondDraws],
-                     ) -> Callable[[float, float, float, float], float]:
+    def _vega_kernel(
+        self,
+        opt: str,
+        q: float,
+        cache: dict[float, _CondDraws],
+    ) -> Callable[[float, float, float, float], float]:
         """
         Vega = dV/d(sqrt(xi0)) — sensitivity to the initial forward
         volatility, matching the Heston Phase 4 convention: it collapses
@@ -900,16 +1044,18 @@ class RoughBergomiModel(PricingModel):
             if k == 0.0:
                 return 0.0  # prepaid forward: no vol dependence
             A, int_var = self._draws(t, cache)
-            up = self._conditional_price(s, k, t, rr, opt, q,
-                                         np.sqrt(c_up) * A, c_up * int_var)
-            dn = self._conditional_price(s, k, t, rr, opt, q,
-                                         np.sqrt(c_dn) * A, c_dn * int_var)
+            up = self._conditional_price(s, k, t, rr, opt, q, np.sqrt(c_up) * A, c_up * int_var)
+            dn = self._conditional_price(s, k, t, rr, opt, q, np.sqrt(c_dn) * A, c_dn * int_var)
             return (up - dn) / (2.0 * h)
+
         return kernel
 
-    def _theta_kernel(self, opt: str, q: float,
-                      cache: dict[float, _CondDraws],
-                      ) -> Callable[[float, float, float, float], float]:
+    def _theta_kernel(
+        self,
+        opt: str,
+        q: float,
+        cache: dict[float, _CondDraws],
+    ) -> Callable[[float, float, float, float], float]:
         """
         Theta = dV/dt (per year) = -dV/dT, central difference in maturity.
         Changing T changes the mesh, so the draws at T-h and T+h are
@@ -920,10 +1066,11 @@ class RoughBergomiModel(PricingModel):
         noise rather than quadrature noise; the residual standard error
         of the Greek is ~ SE(price) / (2h * sqrt(correlation gain)).
         """
+
         def kernel(s: float, k: float, t: float, rr: float) -> float:
             h = 1e-2 * t
             if k == 0.0:
-                if opt != 'call':
+                if opt != "call":
                     return 0.0
                 up = s * np.exp(-q * (t - h))
                 dn = s * np.exp(-q * (t + h))
@@ -933,11 +1080,15 @@ class RoughBergomiModel(PricingModel):
             p_dn = self._conditional_price(s, k, t - h, rr, opt, q, A_dn, I_dn)
             p_up = self._conditional_price(s, k, t + h, rr, opt, q, A_up, I_up)
             return (p_dn - p_up) / (2.0 * h)
+
         return kernel
 
-    def _rho_kernel(self, opt: str, q: float,
-                    cache: dict[float, _CondDraws],
-                    ) -> Callable[[float, float, float, float], float]:
+    def _rho_kernel(
+        self,
+        opt: str,
+        q: float,
+        cache: dict[float, _CondDraws],
+    ) -> Callable[[float, float, float, float], float]:
         """
         Rho = dV/dr (interest-rate sensitivity, NOT the spot-vol
         correlation rho_sv — for dV/d(correlation) use
@@ -945,6 +1096,7 @@ class RoughBergomiModel(PricingModel):
         so this is a central difference on identical (A, I) —
         deterministic given the seed.
         """
+
         def kernel(s: float, k: float, t: float, rr: float) -> float:
             h = 1e-4
             if k == 0.0:
@@ -953,45 +1105,88 @@ class RoughBergomiModel(PricingModel):
             up = self._conditional_price(s, k, t, rr + h, opt, q, A, int_var)
             dn = self._conditional_price(s, k, t, rr - h, opt, q, A, int_var)
             return (up - dn) / (2.0 * h)
+
         return kernel
 
-    def delta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def delta(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Delta = dV/dS by exact path rescaling (one simulation)."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         return self._vectorize(self._delta_kernel(opt, q, {}), S, K, T, r)
 
-    def gamma(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def gamma(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Gamma = d2V/dS2 by exact path rescaling. Call = put (parity)."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         return self._vectorize(self._gamma_kernel(opt, q, {}), S, K, T, r)
 
-    def vega(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-             option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def vega(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Vega = dV/d(sqrt(xi0)) on identical draws (exact scaling)."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         return self._vectorize(self._vega_kernel(opt, q, {}), S, K, T, r)
 
-    def theta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def theta(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Theta = dV/dt (per year), re-simulated meshes under CRN."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         return self._vectorize(self._theta_kernel(opt, q, {}), S, K, T, r)
 
-    def rho(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-            option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def rho(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Rho = dV/dr on identical draws."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         return self._vectorize(self._rho_kernel(opt, q, {}), S, K, T, r)
 
-    def greeks(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-               option_type: str = 'call', q: float = 0.0) -> Dict[str, Numeric]:
+    def greeks(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Dict[str, Numeric]:
         """
         All ABC Greeks in one dict: price, delta, gamma, vega, theta, rho.
 
@@ -1006,17 +1201,17 @@ class RoughBergomiModel(PricingModel):
 
         def price_kernel(s: float, k: float, t: float, rr: float) -> float:
             if k == 0.0:
-                return float(s * np.exp(-q * t)) if opt == 'call' else 0.0
+                return float(s * np.exp(-q * t)) if opt == "call" else 0.0
             A, int_var = self._draws(t, cache)
             return self._conditional_price(s, k, t, rr, opt, q, A, int_var)
 
         return {
-            'price': self._vectorize(price_kernel, S, K, T, r),
-            'delta': self._vectorize(self._delta_kernel(opt, q, cache), S, K, T, r),
-            'gamma': self._vectorize(self._gamma_kernel(opt, q, cache), S, K, T, r),
-            'vega': self._vectorize(self._vega_kernel(opt, q, cache), S, K, T, r),
-            'theta': self._vectorize(self._theta_kernel(opt, q, cache), S, K, T, r),
-            'rho': self._vectorize(self._rho_kernel(opt, q, cache), S, K, T, r),
+            "price": self._vectorize(price_kernel, S, K, T, r),
+            "delta": self._vectorize(self._delta_kernel(opt, q, cache), S, K, T, r),
+            "gamma": self._vectorize(self._gamma_kernel(opt, q, cache), S, K, T, r),
+            "vega": self._vectorize(self._vega_kernel(opt, q, cache), S, K, T, r),
+            "theta": self._vectorize(self._theta_kernel(opt, q, cache), S, K, T, r),
+            "rho": self._vectorize(self._rho_kernel(opt, q, cache), S, K, T, r),
         }
 
     # ──────────────────────────────────────────────
@@ -1025,15 +1220,21 @@ class RoughBergomiModel(PricingModel):
 
     def _bumped(self, **overrides: float) -> "RoughBergomiModel":
         """Copy with some model parameters replaced (numerical settings kept)."""
-        params = {"xi0": self.xi0, "eta": self.eta, "H": self.H,
-                  "rho": self.rho_sv}
+        params = {"xi0": self.xi0, "eta": self.eta, "H": self.H, "rho": self.rho_sv}
         params.update(overrides)
-        return RoughBergomiModel(**params, mc_paths=self.mc_paths,
-                                 mc_steps=self.mc_steps, seed=self.seed)
+        return RoughBergomiModel(
+            **params, mc_paths=self.mc_paths, mc_steps=self.mc_steps, seed=self.seed
+        )
 
-    def model_greeks(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-                     option_type: str = 'call', q: float = 0.0,
-                     ) -> Dict[str, Numeric]:
+    def model_greeks(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Dict[str, Numeric]:
         """
         Sensitivities to the four rBergomi parameters by central finite
         differences with EXACT common random numbers — the Gaussian draws
@@ -1068,11 +1269,17 @@ class RoughBergomiModel(PricingModel):
             if t not in volterra_cache:
                 rng = np.random.default_rng(self.seed)
                 volterra_cache[t] = self._simulate_volterra_hybrid(
-                    t, self.mc_steps, self.mc_paths, rng)
+                    t, self.mc_steps, self.mc_paths, rng
+                )
             return volterra_cache[t]
 
-        def terms(t: float, tag: str, *, eta: float | None = None,
-                  model: "RoughBergomiModel | None" = None) -> _CondDraws:
+        def terms(
+            t: float,
+            tag: str,
+            *,
+            eta: float | None = None,
+            model: "RoughBergomiModel | None" = None,
+        ) -> _CondDraws:
             key = (t, tag)
             if key not in ai_cache:
                 if model is not None:
@@ -1080,8 +1287,7 @@ class RoughBergomiModel(PricingModel):
                     ai_cache[key] = model._conditional_draws(t)
                 else:
                     V_tilde, dB = volterra(t)
-                    ai_cache[key] = self._conditional_terms(V_tilde, dB, t,
-                                                            eta=eta)
+                    ai_cache[key] = self._conditional_terms(V_tilde, dB, t, eta=eta)
             return ai_cache[key]
 
         h_xi0 = 1e-3 * self.xi0
@@ -1090,11 +1296,9 @@ class RoughBergomiModel(PricingModel):
         def kernel_xi0(s: float, k: float, t: float, rr: float) -> float:
             if k == 0.0:
                 return 0.0
-            A, int_var = terms(t, 'base')
-            up = self._conditional_price(s, k, t, rr, opt, q,
-                                         np.sqrt(c_up) * A, c_up * int_var)
-            dn = self._conditional_price(s, k, t, rr, opt, q,
-                                         np.sqrt(c_dn) * A, c_dn * int_var)
+            A, int_var = terms(t, "base")
+            up = self._conditional_price(s, k, t, rr, opt, q, np.sqrt(c_up) * A, c_up * int_var)
+            dn = self._conditional_price(s, k, t, rr, opt, q, np.sqrt(c_dn) * A, c_dn * int_var)
             return (up - dn) / (2.0 * h_xi0)
 
         h_eta = 1e-3 * self.eta
@@ -1102,8 +1306,8 @@ class RoughBergomiModel(PricingModel):
         def kernel_eta(s: float, k: float, t: float, rr: float) -> float:
             if k == 0.0:
                 return 0.0
-            A_up, I_up = terms(t, 'eta+', eta=self.eta + h_eta)
-            A_dn, I_dn = terms(t, 'eta-', eta=self.eta - h_eta)
+            A_up, I_up = terms(t, "eta+", eta=self.eta + h_eta)
+            A_dn, I_dn = terms(t, "eta-", eta=self.eta - h_eta)
             up = self._conditional_price(s, k, t, rr, opt, q, A_up, I_up)
             dn = self._conditional_price(s, k, t, rr, opt, q, A_dn, I_dn)
             return (up - dn) / (2.0 * h_eta)
@@ -1116,8 +1320,8 @@ class RoughBergomiModel(PricingModel):
             def kernel_H(s: float, k: float, t: float, rr: float) -> float:
                 if k == 0.0:
                     return 0.0
-                A_up, I_up = terms(t, 'H+', model=model_H_up)
-                A_dn, I_dn = terms(t, 'H-', model=model_H_dn)
+                A_up, I_up = terms(t, "H+", model=model_H_up)
+                A_dn, I_dn = terms(t, "H-", model=model_H_dn)
                 up = self._conditional_price(s, k, t, rr, opt, q, A_up, I_up)
                 dn = self._conditional_price(s, k, t, rr, opt, q, A_dn, I_dn)
                 return (up - dn) / (2.0 * h_H)
@@ -1129,41 +1333,48 @@ class RoughBergomiModel(PricingModel):
             def kernel_H(s: float, k: float, t: float, rr: float) -> float:
                 if k == 0.0:
                     return 0.0
-                A0, I0 = terms(t, 'base')
-                A_dn, I_dn = terms(t, 'H-', model=model_H_dn)
+                A0, I0 = terms(t, "base")
+                A_dn, I_dn = terms(t, "H-", model=model_H_dn)
                 base = self._conditional_price(s, k, t, rr, opt, q, A0, I0)
                 dn = self._conditional_price(s, k, t, rr, opt, q, A_dn, I_dn)
                 return (base - dn) / h_bwd
 
-        h_rho = min(1e-3 * max(abs(self.rho_sv), 0.1),
-                    0.5 * (1.0 - abs(self.rho_sv)))
+        h_rho = min(1e-3 * max(abs(self.rho_sv), 0.1), 0.5 * (1.0 - abs(self.rho_sv)))
 
         def kernel_rho(s: float, k: float, t: float, rr: float) -> float:
             if k == 0.0:
                 return 0.0
-            A, int_var = terms(t, 'base')
-            up = self._conditional_price(s, k, t, rr, opt, q, A, int_var,
-                                         rho=self.rho_sv + h_rho)
-            dn = self._conditional_price(s, k, t, rr, opt, q, A, int_var,
-                                         rho=self.rho_sv - h_rho)
+            A, int_var = terms(t, "base")
+            up = self._conditional_price(s, k, t, rr, opt, q, A, int_var, rho=self.rho_sv + h_rho)
+            dn = self._conditional_price(s, k, t, rr, opt, q, A, int_var, rho=self.rho_sv - h_rho)
             return (up - dn) / (2.0 * h_rho)
 
         return {
-            'xi0': self._vectorize(kernel_xi0, S, K, T, r),
-            'eta': self._vectorize(kernel_eta, S, K, T, r),
-            'H': self._vectorize(kernel_H, S, K, T, r),
-            'rho': self._vectorize(kernel_rho, S, K, T, r),
+            "xi0": self._vectorize(kernel_xi0, S, K, T, r),
+            "eta": self._vectorize(kernel_eta, S, K, T, r),
+            "H": self._vectorize(kernel_H, S, K, T, r),
+            "rho": self._vectorize(kernel_rho, S, K, T, r),
         }
 
     # ──────────────────────────────────────────────
     # Plain payoff Monte Carlo (cross-validation, exotics)
     # ──────────────────────────────────────────────
 
-    def price_mc(self, S: float, K: float, T: float, r: float,
-                 option_type: str = 'call', q: float = 0.0, *,
-                 n_paths: int | None = None, n_steps: int | None = None,
-                 method: str = 'hybrid', antithetic: bool = False,
-                 seed: int | None = None) -> MCResult:
+    def price_mc(
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        option_type: str = "call",
+        q: float = 0.0,
+        *,
+        n_paths: int | None = None,
+        n_steps: int | None = None,
+        method: str = "hybrid",
+        antithetic: bool = False,
+        seed: int | None = None,
+    ) -> MCResult:
         """
         European price by plain payoff Monte Carlo on simulated paths —
         the cross-check of the conditional estimator (same discretization
@@ -1183,31 +1394,50 @@ class RoughBergomiModel(PricingModel):
         n_steps_eff = self.mc_steps if n_steps is None else int(n_steps)
 
         engine = MonteCarloEngine(n_paths=n_paths_eff, n_steps=n_steps_eff)
-        if opt == 'call':
+        if opt == "call":
+
             def payoff(p: np.ndarray) -> np.ndarray:
                 return np.maximum(p[:, -1] - K, 0.0)
         else:
+
             def payoff(p: np.ndarray) -> np.ndarray:
                 return np.maximum(K - p[:, -1], 0.0)
 
         if antithetic:
             paths, paths_anti = self.simulate(
-                S, T, r, q, n_paths=n_paths_eff, n_steps=n_steps_eff,
-                method=method, antithetic=True, seed=seed)
+                S,
+                T,
+                r,
+                q,
+                n_paths=n_paths_eff,
+                n_steps=n_steps_eff,
+                method=method,
+                antithetic=True,
+                seed=seed,
+            )
             return engine.price(payoff, paths, r, T, paths_anti=paths_anti)
-        paths = self.simulate(S, T, r, q, n_paths=n_paths_eff,
-                              n_steps=n_steps_eff, method=method, seed=seed)
+        paths = self.simulate(
+            S, T, r, q, n_paths=n_paths_eff, n_steps=n_steps_eff, method=method, seed=seed
+        )
         return engine.price(payoff, paths, r, T)
 
     # ──────────────────────────────────────────────
     # Implied volatility surface
     # ──────────────────────────────────────────────
 
-    def iv_surface(self, S: float, strikes: Numeric, maturities: Numeric,
-                   r: float, q: float = 0.0, *,
-                   n_paths: int | None = None, n_steps: int | None = None,
-                   method: str = 'hybrid',
-                   seed: int | None = None) -> np.ndarray:
+    def iv_surface(
+        self,
+        S: float,
+        strikes: Numeric,
+        maturities: Numeric,
+        r: float,
+        q: float = 0.0,
+        *,
+        n_paths: int | None = None,
+        n_steps: int | None = None,
+        method: str = "hybrid",
+        seed: int | None = None,
+    ) -> np.ndarray:
         """
         Implied volatility surface via the conditional estimator and the
         Phase 1 Halley solver.
@@ -1244,21 +1474,24 @@ class RoughBergomiModel(PricingModel):
         maturities_arr = np.atleast_1d(np.asarray(maturities, dtype=np.float64))
         self._validate_inputs(S, strikes_arr, maturities_arr, r)
         if np.any(strikes_arr <= 0):
-            raise ValueError("iv_surface requires strikes > 0; a zero "
-                             "strike has no implied volatility.")
+            raise ValueError(
+                "iv_surface requires strikes > 0; a zero strike has no implied volatility."
+            )
 
         ivs = np.empty((len(maturities_arr), len(strikes_arr)), dtype=np.float64)
         for i, t in enumerate(maturities_arr):
-            A, int_var = self._conditional_draws(float(t), n_paths=n_paths,
-                                           n_steps=n_steps, method=method,
-                                           seed=seed)
+            A, int_var = self._conditional_draws(
+                float(t), n_paths=n_paths, n_steps=n_steps, method=method, seed=seed
+            )
             forward = S * np.exp((r - q) * t)
             for j, k in enumerate(strikes_arr):
-                opt = 'call' if k >= forward else 'put'
-                p = self._conditional_price(float(S), float(k), float(t),
-                                            float(r), opt, q, A, int_var)
+                opt = "call" if k >= forward else "put"
+                p = self._conditional_price(
+                    float(S), float(k), float(t), float(r), opt, q, A, int_var
+                )
                 ivs[i, j] = BlackScholesModel.implied_vol(
-                    p, float(S), float(k), float(t), float(r), opt, q)
+                    p, float(S), float(k), float(t), float(r), opt, q
+                )
         return ivs
 
     # ──────────────────────────────────────────────
@@ -1267,14 +1500,17 @@ class RoughBergomiModel(PricingModel):
     # ──────────────────────────────────────────────
 
     def __repr__(self) -> str:
-        return (f"RoughBergomiModel(xi0={self.xi0}, eta={self.eta}, "
-                f"H={self.H}, rho={self.rho_sv})")
+        return f"RoughBergomiModel(xi0={self.xi0}, eta={self.eta}, H={self.H}, rho={self.rho_sv})"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RoughBergomiModel):
             return NotImplemented
-        return (self.xi0, self.eta, self.H, self.rho_sv) == \
-               (other.xi0, other.eta, other.H, other.rho_sv)
+        return (self.xi0, self.eta, self.H, self.rho_sv) == (
+            other.xi0,
+            other.eta,
+            other.H,
+            other.rho_sv,
+        )
 
     def __hash__(self) -> int:
         return hash((self.xi0, self.eta, self.H, self.rho_sv))

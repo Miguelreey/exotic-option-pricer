@@ -8,9 +8,9 @@ engines : Numerical engines (Monte Carlo, PDE solvers)
 utils   : Visualization and Greeks utilities
 """
 
-__version__ = '2.0.0'
+__version__ = "2.0.0"
 
 from .engines import MCResult, MonteCarloEngine
 from .models import BlackScholesModel, PricingModel
 
-__all__ = ['PricingModel', 'BlackScholesModel', 'MonteCarloEngine', 'MCResult']
+__all__ = ["PricingModel", "BlackScholesModel", "MonteCarloEngine", "MCResult"]

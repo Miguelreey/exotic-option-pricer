@@ -17,7 +17,7 @@ import sys
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from hypothesis import given, settings
 from hypothesis.strategies import floats
@@ -46,8 +46,8 @@ class TestPCPProperty:
     @settings(max_examples=500)
     def test_pcp_no_dividends(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        call = bs.price(S, K, T, r, 'call')
-        put = bs.price(S, K, T, r, 'put')
+        call = bs.price(S, K, T, r, "call")
+        put = bs.price(S, K, T, r, "put")
         parity = S - K * np.exp(-r * T)
         assert abs((call - put) - parity) < 1e-8
 
@@ -55,8 +55,8 @@ class TestPCPProperty:
     @settings(max_examples=500)
     def test_pcp_with_dividends(self, S, K, T, r, sigma, q):
         bs = BlackScholesModel(sigma=sigma)
-        call = bs.price(S, K, T, r, 'call', q=q)
-        put = bs.price(S, K, T, r, 'put', q=q)
+        call = bs.price(S, K, T, r, "call", q=q)
+        put = bs.price(S, K, T, r, "put", q=q)
         parity = S * np.exp(-q * T) - K * np.exp(-r * T)
         assert abs((call - put) - parity) < 1e-8
 
@@ -71,7 +71,7 @@ class TestBoundsProperty:
     @settings(max_examples=500)
     def test_call_bounds(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        call = bs.price(S, K, T, r, 'call')
+        call = bs.price(S, K, T, r, "call")
         assert call >= -1e-10
         assert call <= S + 1e-10
         assert call >= max(S - K * np.exp(-r * T), 0.0) - 1e-10
@@ -80,7 +80,7 @@ class TestBoundsProperty:
     @settings(max_examples=500)
     def test_put_bounds(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        put = bs.price(S, K, T, r, 'put')
+        put = bs.price(S, K, T, r, "put")
         assert put >= -1e-10
         assert put <= K * np.exp(-r * T) + 1e-10
         assert put >= max(K * np.exp(-r * T) - S, 0.0) - 1e-10
@@ -90,32 +90,31 @@ class TestBoundsProperty:
 # 3. Greek Bounds — universal constraints
 # ============================================================================
 class TestGreekBoundsProperty:
-
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol)
     @settings(max_examples=500)
     def test_call_delta_in_01(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        d = bs.delta(S, K, T, r, 'call')
+        d = bs.delta(S, K, T, r, "call")
         assert -1e-10 <= d <= 1.0 + 1e-10
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol)
     @settings(max_examples=500)
     def test_put_delta_in_neg1_0(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        d = bs.delta(S, K, T, r, 'put')
+        d = bs.delta(S, K, T, r, "put")
         assert -1.0 - 1e-10 <= d <= 1e-10
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol)
     @settings(max_examples=500)
     def test_gamma_nonnegative(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        assert bs.gamma(S, K, T, r, 'call') >= -1e-15
+        assert bs.gamma(S, K, T, r, "call") >= -1e-15
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol)
     @settings(max_examples=500)
     def test_vega_nonnegative(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        assert bs.vega(S, K, T, r, 'call') >= -1e-15
+        assert bs.vega(S, K, T, r, "call") >= -1e-15
 
 
 # ============================================================================
@@ -128,22 +127,20 @@ class TestSymmetryProperty:
     @settings(max_examples=500)
     def test_gamma_call_equals_put(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        assert np.isclose(bs.gamma(S, K, T, r, 'call'),
-                          bs.gamma(S, K, T, r, 'put'), rtol=1e-10)
+        assert np.isclose(bs.gamma(S, K, T, r, "call"), bs.gamma(S, K, T, r, "put"), rtol=1e-10)
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol)
     @settings(max_examples=500)
     def test_vega_call_equals_put(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        assert np.isclose(bs.vega(S, K, T, r, 'call'),
-                          bs.vega(S, K, T, r, 'put'), rtol=1e-10)
+        assert np.isclose(bs.vega(S, K, T, r, "call"), bs.vega(S, K, T, r, "put"), rtol=1e-10)
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol)
     @settings(max_examples=500)
     def test_delta_call_minus_put(self, S, K, T, r, sigma):
         """Delta_call - Delta_put = 1 (no dividends)."""
         bs = BlackScholesModel(sigma=sigma)
-        diff = bs.delta(S, K, T, r, 'call') - bs.delta(S, K, T, r, 'put')
+        diff = bs.delta(S, K, T, r, "call") - bs.delta(S, K, T, r, "put")
         assert np.isclose(diff, 1.0, atol=1e-10)
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol, q=div_yield)
@@ -151,7 +148,7 @@ class TestSymmetryProperty:
     def test_delta_pcp_with_dividends(self, S, K, T, r, sigma, q):
         """Delta_call - Delta_put = exp(-qT) with dividends."""
         bs = BlackScholesModel(sigma=sigma)
-        diff = bs.delta(S, K, T, r, 'call', q=q) - bs.delta(S, K, T, r, 'put', q=q)
+        diff = bs.delta(S, K, T, r, "call", q=q) - bs.delta(S, K, T, r, "put", q=q)
         assert np.isclose(diff, np.exp(-q * T), atol=1e-10)
 
 
@@ -165,16 +162,16 @@ class TestHomogeneityProperty:
     @settings(max_examples=500)
     def test_call_homogeneity(self, S, K, T, r, sigma, a):
         bs = BlackScholesModel(sigma=sigma)
-        base = bs.price(S, K, T, r, 'call')
-        scaled = bs.price(a * S, a * K, T, r, 'call')
+        base = bs.price(S, K, T, r, "call")
+        scaled = bs.price(a * S, a * K, T, r, "call")
         assert np.isclose(scaled, a * base, rtol=1e-10)
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol, a=scale_factor)
     @settings(max_examples=500)
     def test_put_homogeneity(self, S, K, T, r, sigma, a):
         bs = BlackScholesModel(sigma=sigma)
-        base = bs.price(S, K, T, r, 'put')
-        scaled = bs.price(a * S, a * K, T, r, 'put')
+        base = bs.price(S, K, T, r, "put")
+        scaled = bs.price(a * S, a * K, T, r, "put")
         assert np.isclose(scaled, a * base, rtol=1e-10)
 
 
@@ -188,22 +185,26 @@ class TestPDEProperty:
     @settings(max_examples=500)
     def test_pde_no_dividends(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        for otype in ('call', 'put'):
+        for otype in ("call", "put"):
             V = bs.price(S, K, T, r, otype)
-            lhs = (bs.theta(S, K, T, r, otype)
-                   + r * S * bs.delta(S, K, T, r, otype)
-                   + 0.5 * sigma**2 * S**2 * bs.gamma(S, K, T, r, otype))
+            lhs = (
+                bs.theta(S, K, T, r, otype)
+                + r * S * bs.delta(S, K, T, r, otype)
+                + 0.5 * sigma**2 * S**2 * bs.gamma(S, K, T, r, otype)
+            )
             assert abs(lhs - r * V) < 1e-6 * max(abs(V), 1.0)
 
     @given(S=spot, K=strike, T=time_to_exp, r=rate, sigma=vol, q=div_yield)
     @settings(max_examples=500)
     def test_pde_with_dividends(self, S, K, T, r, sigma, q):
         bs = BlackScholesModel(sigma=sigma)
-        for otype in ('call', 'put'):
+        for otype in ("call", "put"):
             V = bs.price(S, K, T, r, otype, q=q)
-            lhs = (bs.theta(S, K, T, r, otype, q=q)
-                   + (r - q) * S * bs.delta(S, K, T, r, otype, q=q)
-                   + 0.5 * sigma**2 * S**2 * bs.gamma(S, K, T, r, otype, q=q))
+            lhs = (
+                bs.theta(S, K, T, r, otype, q=q)
+                + (r - q) * S * bs.delta(S, K, T, r, otype, q=q)
+                + 0.5 * sigma**2 * S**2 * bs.gamma(S, K, T, r, otype, q=q)
+            )
             assert abs(lhs - r * V) < 1e-6 * max(abs(V), 1.0)
 
 
@@ -211,17 +212,13 @@ class TestPDEProperty:
 # 7. Implied Vol Roundtrip
 # ============================================================================
 class TestImpliedVolProperty:
-
-    @given(S=floats(min_value=50.0, max_value=200.0,
-                    allow_nan=False, allow_infinity=False),
-           moneyness=floats(min_value=0.85, max_value=1.15,
-                            allow_nan=False, allow_infinity=False),
-           T=floats(min_value=0.25, max_value=3.0,
-                    allow_nan=False, allow_infinity=False),
-           r=floats(min_value=0.0, max_value=0.10,
-                    allow_nan=False, allow_infinity=False),
-           sigma=floats(min_value=0.15, max_value=1.0,
-                        allow_nan=False, allow_infinity=False))
+    @given(
+        S=floats(min_value=50.0, max_value=200.0, allow_nan=False, allow_infinity=False),
+        moneyness=floats(min_value=0.85, max_value=1.15, allow_nan=False, allow_infinity=False),
+        T=floats(min_value=0.25, max_value=3.0, allow_nan=False, allow_infinity=False),
+        r=floats(min_value=0.0, max_value=0.10, allow_nan=False, allow_infinity=False),
+        sigma=floats(min_value=0.15, max_value=1.0, allow_nan=False, allow_infinity=False),
+    )
     @settings(max_examples=500)
     def test_roundtrip(self, S, moneyness, T, r, sigma):
         """price(sigma) -> implied_vol -> sigma for reasonable params.
@@ -231,26 +228,23 @@ class TestImpliedVolProperty:
         """
         K = S * moneyness
         bs = BlackScholesModel(sigma=sigma)
-        price = bs.price(S, K, T, r, 'call')
-        iv = BlackScholesModel.implied_vol(price, S, K, T, r, 'call')
+        price = bs.price(S, K, T, r, "call")
+        iv = BlackScholesModel.implied_vol(price, S, K, T, r, "call")
         assert abs(iv - sigma) / sigma < 0.01  # 1% relative tolerance
 
-    @given(S=floats(min_value=50.0, max_value=200.0,
-                    allow_nan=False, allow_infinity=False),
-           moneyness=floats(min_value=0.85, max_value=1.15,
-                            allow_nan=False, allow_infinity=False),
-           T=floats(min_value=0.25, max_value=3.0,
-                    allow_nan=False, allow_infinity=False),
-           r=floats(min_value=0.0, max_value=0.10,
-                    allow_nan=False, allow_infinity=False),
-           sigma=floats(min_value=0.15, max_value=1.0,
-                        allow_nan=False, allow_infinity=False))
+    @given(
+        S=floats(min_value=50.0, max_value=200.0, allow_nan=False, allow_infinity=False),
+        moneyness=floats(min_value=0.85, max_value=1.15, allow_nan=False, allow_infinity=False),
+        T=floats(min_value=0.25, max_value=3.0, allow_nan=False, allow_infinity=False),
+        r=floats(min_value=0.0, max_value=0.10, allow_nan=False, allow_infinity=False),
+        sigma=floats(min_value=0.15, max_value=1.0, allow_nan=False, allow_infinity=False),
+    )
     @settings(max_examples=500)
     def test_roundtrip_put(self, S, moneyness, T, r, sigma):
         K = S * moneyness
         bs = BlackScholesModel(sigma=sigma)
-        price = bs.price(S, K, T, r, 'put')
-        iv = BlackScholesModel.implied_vol(price, S, K, T, r, 'put')
+        price = bs.price(S, K, T, r, "put")
+        iv = BlackScholesModel.implied_vol(price, S, K, T, r, "put")
         assert abs(iv - sigma) / sigma < 0.01  # 1% relative tolerance
 
 
@@ -264,15 +258,15 @@ class TestFiniteProperty:
     @settings(max_examples=500)
     def test_all_greeks_finite(self, S, K, T, r, sigma):
         bs = BlackScholesModel(sigma=sigma)
-        g = bs.greeks(S, K, T, r, 'call')
+        g = bs.greeks(S, K, T, r, "call")
         # Elasticity is NaN by design for deep OTM options (price ≈ 0 → division by zero)
         for name, val in g.items():
-            if name == 'elasticity':
+            if name == "elasticity":
                 continue
             assert np.isfinite(val), (
                 f"{name} not finite for S={S}, K={K}, T={T}, r={r}, sigma={sigma}"
             )
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '--tb=short'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])

@@ -219,20 +219,23 @@ class HestonCalibrator:
     @staticmethod
     def _to_x(params: dict[str, float]) -> np.ndarray:
         """(v0, kappa, theta, xi, rho) -> unconstrained x in R^5."""
-        return np.array([
-            np.log(params["v0"]),
-            np.log(params["kappa"]),
-            np.log(params["theta"]),
-            np.log(params["xi"]),
-            np.arctanh(params["rho"]),
-        ])
+        return np.array(
+            [
+                np.log(params["v0"]),
+                np.log(params["kappa"]),
+                np.log(params["theta"]),
+                np.log(params["xi"]),
+                np.arctanh(params["rho"]),
+            ]
+        )
 
     # ──────────────────────────────────────────────
     # Model implied vols
     # ──────────────────────────────────────────────
 
-    def model_ivs(self, model: HestonModel, strikes: np.ndarray,
-                  maturities: np.ndarray) -> np.ndarray:
+    def model_ivs(
+        self, model: HestonModel, strikes: np.ndarray, maturities: np.ndarray
+    ) -> np.ndarray:
         """
         Implied vols of ``model`` at the given (strike, maturity) points.
 
@@ -255,15 +258,24 @@ class HestonCalibrator:
             idx = np.flatnonzero(maturities == T)
             try:
                 prices = model.price_surface(
-                    self.S0, strikes[idx], float(T), self.r, q=self.q,
+                    self.S0,
+                    strikes[idx],
+                    float(T),
+                    self.r,
+                    q=self.q,
                 )
             except ValueError:
                 continue  # moment explosion at this T: leave NaN
             for j, price in zip(idx, prices):
                 try:
                     iv = BlackScholesModel.implied_vol(
-                        float(price), self.S0, float(strikes[j]), float(T),
-                        self.r, 'call', q=self.q,
+                        float(price),
+                        self.S0,
+                        float(strikes[j]),
+                        float(T),
+                        self.r,
+                        "call",
+                        q=self.q,
                     )
                 except ValueError:
                     continue
@@ -275,8 +287,9 @@ class HestonCalibrator:
     # Calibration
     # ──────────────────────────────────────────────
 
-    def _default_starts(self, market_ivs: np.ndarray,
-                        maturities: np.ndarray) -> list[dict[str, float]]:
+    def _default_starts(
+        self, market_ivs: np.ndarray, maturities: np.ndarray
+    ) -> list[dict[str, float]]:
         """
         Heuristic start points. The variance anchors come from the data
         (short-end IV^2 for v0, global mean IV^2 for theta); the weakly
@@ -355,13 +368,10 @@ class HestonCalibrator:
         n = strikes.shape[0]
         if maturities.shape != (n,) or market_ivs.shape != (n,):
             raise ValueError(
-                "strikes, maturities and market_ivs must be 1-D arrays "
-                "of equal length"
+                "strikes, maturities and market_ivs must be 1-D arrays of equal length"
             )
         if n < 5:
-            raise ValueError(
-                f"Need at least 5 options to identify 5 parameters, got {n}"
-            )
+            raise ValueError(f"Need at least 5 options to identify 5 parameters, got {n}")
         if np.any(strikes <= 0) or np.any(maturities <= 0):
             raise ValueError("strikes and maturities must be > 0")
         if np.any(market_ivs <= 0) or not np.all(np.isfinite(market_ivs)):
@@ -384,26 +394,26 @@ class HestonCalibrator:
                 warnings.simplefilter("ignore", UserWarning)
                 model = HestonModel(**params)
             ivs = self.model_ivs(model, strikes, maturities)
-            res = np.where(np.isnan(ivs), _PENALTY_RESIDUAL,
-                           w * (ivs - market_ivs))
+            res = np.where(np.isnan(ivs), _PENALTY_RESIDUAL, w * (ivs - market_ivs))
             if feller_penalty > 0.0:
                 violation = max(
-                    params["xi"] ** 2
-                    - 2.0 * params["kappa"] * params["theta"], 0.0,
+                    params["xi"] ** 2 - 2.0 * params["kappa"] * params["theta"],
+                    0.0,
                 )
                 res = np.append(res, np.sqrt(feller_penalty * violation))
             return res
 
-        start_list = starts if starts is not None else \
-            self._default_starts(market_ivs, maturities)
-        start_list = start_list[:max(1, n_starts)]
+        start_list = starts if starts is not None else self._default_starts(market_ivs, maturities)
+        start_list = start_list[: max(1, n_starts)]
         if not start_list:
             raise ValueError("starts must contain at least one start point")
 
         best = None
         for start in start_list:
             fit = least_squares(
-                residuals, self._to_x(start), method="trf",
+                residuals,
+                self._to_x(start),
+                method="trf",
                 max_nfev=max_nfev,
             )
             if best is None or fit.cost < best.cost:
@@ -428,9 +438,7 @@ class HestonCalibrator:
             model=model,
             rmse_iv=float(np.sqrt(np.mean(errors**2))),
             max_error_iv=float(np.max(np.abs(errors))),
-            feller_satisfied=(
-                2.0 * params["kappa"] * params["theta"] >= params["xi"] ** 2
-            ),
+            feller_satisfied=(2.0 * params["kappa"] * params["theta"] >= params["xi"] ** 2),
             cost=float(best.cost),
             n_starts=len(start_list),
             success=bool(best.success),

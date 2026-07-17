@@ -435,9 +435,7 @@ def numerical_vega(
     if h <= 0:
         raise ValueError(f"bump must be > 0, got {h}")
     if sigma - h <= 0:
-        raise ValueError(
-            f"bump {h} must be < sigma {sigma} (bumped sigma must stay positive)"
-        )
+        raise ValueError(f"bump {h} must be < sigma {sigma} (bumped sigma must stay positive)")
 
     paths_up = _simulate_crn(engine, seed, S0, T, r, sigma + h, q, n_steps)
     paths_dn = _simulate_crn(engine, seed, S0, T, r, sigma - h, q, n_steps)
@@ -498,9 +496,7 @@ def numerical_theta(
     if h <= 0:
         raise ValueError(f"bump must be > 0, got {h}")
     if T - h <= 0:
-        raise ValueError(
-            f"bump {h} must be < T {T} (bumped maturity must stay positive)"
-        )
+        raise ValueError(f"bump {h} must be < T {T} (bumped maturity must stay positive)")
 
     paths_up = _simulate_crn(engine, seed, S0, T + h, r, sigma, q, n_steps)
     paths_dn = _simulate_crn(engine, seed, S0, T - h, r, sigma, q, n_steps)
@@ -616,8 +612,7 @@ def numerical_greeks(
         invalid = requested_set - _VALID_GREEKS
         if invalid:
             raise ValueError(
-                f"Unknown greeks: {sorted(invalid)}. "
-                f"Valid names: {sorted(_VALID_GREEKS)}."
+                f"Unknown greeks: {sorted(invalid)}. Valid names: {sorted(_VALID_GREEKS)}."
             )
         requested = [g for g in canonical if g in requested_set]
 
@@ -625,8 +620,7 @@ def numerical_greeks(
     invalid_bumps = set(bumps.keys()) - _VALID_GREEKS
     if invalid_bumps:
         raise ValueError(
-            f"Unknown bump keys: {sorted(invalid_bumps)}. "
-            f"Valid names: {sorted(_VALID_GREEKS)}."
+            f"Unknown bump keys: {sorted(invalid_bumps)}. Valid names: {sorted(_VALID_GREEKS)}."
         )
 
     dispatch: dict[str, Callable[[float | None], float]] = {

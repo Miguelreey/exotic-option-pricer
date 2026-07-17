@@ -86,10 +86,17 @@ def qe_paths_a() -> tuple[MonteCarloEngine, np.ndarray, np.ndarray]:
     """
     engine = MonteCarloEngine(n_paths=400_000, seed=42)
     paths, v_paths = engine.simulate_heston(
-        S0, PARAMS_A["v0"], 1.0, R_A,
-        kappa=PARAMS_A["kappa"], theta=PARAMS_A["theta"],
-        xi=PARAMS_A["xi"], rho=PARAMS_A["rho"], q=Q_A,
-        n_steps=100, return_variance=True,
+        S0,
+        PARAMS_A["v0"],
+        1.0,
+        R_A,
+        kappa=PARAMS_A["kappa"],
+        theta=PARAMS_A["theta"],
+        xi=PARAMS_A["xi"],
+        rho=PARAMS_A["rho"],
+        q=Q_A,
+        n_steps=100,
+        return_variance=True,
     )
     return engine, paths, v_paths
 
@@ -97,6 +104,7 @@ def qe_paths_a() -> tuple[MonteCarloEngine, np.ndarray, np.ndarray]:
 # ──────────────────────────────────────────────
 # Validation and construction
 # ──────────────────────────────────────────────
+
 
 class TestHestonValidation:
     def test_valid_construction(self):
@@ -145,7 +153,7 @@ class TestHestonValidation:
 
     def test_invalid_option_type(self, model_a):
         with pytest.raises(ValueError, match="option_type"):
-            model_a.price(100, 100, 1.0, 0.05, 'straddle')
+            model_a.price(100, 100, 1.0, 0.05, "straddle")
 
     def test_invalid_market_inputs(self, model_a):
         with pytest.raises(ValueError):
@@ -172,6 +180,7 @@ class TestHestonValidation:
 # ──────────────────────────────────────────────
 # Characteristic function
 # ──────────────────────────────────────────────
+
 
 class TestCharacteristicFunction:
     def test_phi_zero_is_one(self, model_a):
@@ -201,8 +210,7 @@ class TestCharacteristicFunction:
     def test_vectorized_matches_scalar(self, model_a):
         u = np.array([0.3, 1.7, 8.0])
         vec = model_a.char_func(u, T=1.0, r=R_A, q=Q_A, S0=S0)
-        scalars = [model_a.char_func(float(x), T=1.0, r=R_A, q=Q_A, S0=S0)
-                   for x in u]
+        scalars = [model_a.char_func(float(x), T=1.0, r=R_A, q=Q_A, S0=S0) for x in u]
         np.testing.assert_allclose(vec, scalars, rtol=1e-14)
 
     def test_scalar_returns_python_complex(self, model_a):
@@ -213,6 +221,7 @@ class TestCharacteristicFunction:
 # ──────────────────────────────────────────────
 # Black-Scholes limit (cross-validation with Phase 1)
 # ──────────────────────────────────────────────
+
 
 class TestBlackScholesLimit:
     """
@@ -230,9 +239,9 @@ class TestBlackScholesLimit:
     def bs(self) -> BlackScholesModel:
         return BlackScholesModel(sigma=0.20)
 
-    @pytest.mark.parametrize("K,T", [(100.0, 1.0), (90.0, 0.5),
-                                     (110.0, 2.0), (100.0, 0.1),
-                                     (60.0, 1.0), (150.0, 1.0)])
+    @pytest.mark.parametrize(
+        "K,T", [(100.0, 1.0), (90.0, 0.5), (110.0, 2.0), (100.0, 0.1), (60.0, 1.0), (150.0, 1.0)]
+    )
     @pytest.mark.parametrize("opt", ["call", "put"])
     def test_price_matches_bs(self, degenerate, bs, K, T, opt):
         heston_p = degenerate.price(S0, K, T, 0.05, opt, q=0.02)
@@ -241,24 +250,24 @@ class TestBlackScholesLimit:
 
     def test_benchmark_value(self, degenerate):
         # BS(100, 100, 1, 5%, sigma=20%) = 10.4506 (Hull benchmark)
-        assert abs(degenerate.price(100, 100, 1.0, 0.05, 'call') - 10.4506) < 1e-3
+        assert abs(degenerate.price(100, 100, 1.0, 0.05, "call") - 10.4506) < 1e-3
 
     def test_delta_gamma_match_bs(self, degenerate, bs):
-        d_h = degenerate.delta(S0, 100, 1.0, 0.05, 'call', q=0.02)
-        d_b = bs.delta(S0, 100, 1.0, 0.05, 'call', q=0.02)
+        d_h = degenerate.delta(S0, 100, 1.0, 0.05, "call", q=0.02)
+        d_b = bs.delta(S0, 100, 1.0, 0.05, "call", q=0.02)
         assert abs(d_h - d_b) < 1e-6
-        g_h = degenerate.gamma(S0, 100, 1.0, 0.05, 'call', q=0.02)
-        g_b = bs.gamma(S0, 100, 1.0, 0.05, 'call', q=0.02)
+        g_h = degenerate.gamma(S0, 100, 1.0, 0.05, "call", q=0.02)
+        g_b = bs.gamma(S0, 100, 1.0, 0.05, "call", q=0.02)
         assert abs(g_h - g_b) < 1e-6
 
     def test_theta_rho_match_bs(self, degenerate, bs):
         # With v0 = theta the effective vol is T-independent, so the
         # calendar Greek matches BS; rho (rate) matches as well.
-        t_h = degenerate.theta(S0, 100, 1.0, 0.05, 'call', q=0.02)
-        t_b = bs.theta(S0, 100, 1.0, 0.05, 'call', q=0.02)
+        t_h = degenerate.theta(S0, 100, 1.0, 0.05, "call", q=0.02)
+        t_b = bs.theta(S0, 100, 1.0, 0.05, "call", q=0.02)
         assert abs(t_h - t_b) < 1e-4
-        r_h = degenerate.rho(S0, 100, 1.0, 0.05, 'call', q=0.02)
-        r_b = bs.rho(S0, 100, 1.0, 0.05, 'call', q=0.02)
+        r_h = degenerate.rho(S0, 100, 1.0, 0.05, "call", q=0.02)
+        r_b = bs.rho(S0, 100, 1.0, 0.05, "call", q=0.02)
         assert abs(r_h - r_b) < 1e-4
 
     def test_vega_matches_bs_scaled(self, degenerate, bs):
@@ -271,8 +280,8 @@ class TestBlackScholesLimit:
         """
         kappa, T = 2.0, 1.0
         w = (1.0 - np.exp(-kappa * T)) / (kappa * T)
-        v_h = degenerate.vega(S0, 100, T, 0.05, 'call', q=0.02)
-        v_b = bs.vega(S0, 100, T, 0.05, 'call', q=0.02)
+        v_h = degenerate.vega(S0, 100, T, 0.05, "call", q=0.02)
+        v_b = bs.vega(S0, 100, T, 0.05, "call", q=0.02)
         assert abs(v_h - v_b * w) < 1e-3 * v_b
 
 
@@ -300,41 +309,40 @@ class TestParityAndBounds:
         against an external engine.
         """
         m = make_model(**params)
-        c = m.price(S0, 105, 1.5, 0.03, 'call', q=0.01)
-        p = m.price(S0, 105, 1.5, 0.03, 'put', q=0.01)
+        c = m.price(S0, 105, 1.5, 0.03, "call", q=0.01)
+        p = m.price(S0, 105, 1.5, 0.03, "put", q=0.01)
         rhs = S0 * np.exp(-0.01 * 1.5) - 105 * np.exp(-0.03 * 1.5)
         assert abs((c - p) - rhs) < 1e-8
 
     def test_call_within_no_arbitrage_bounds(self, model_a):
         for K in [60.0, 100.0, 160.0]:
-            c = model_a.price(S0, K, 1.0, R_A, 'call', q=Q_A)
+            c = model_a.price(S0, K, 1.0, R_A, "call", q=Q_A)
             lower = max(S0 * np.exp(-Q_A) - K * np.exp(-R_A), 0.0)
             upper = S0 * np.exp(-Q_A)
             assert lower - 1e-9 <= c <= upper + 1e-9
 
     def test_call_decreasing_in_strike(self, model_a):
         strikes = np.array([70.0, 85.0, 100.0, 115.0, 130.0])
-        prices = model_a.price(S0, strikes, 1.0, R_A, 'call', q=Q_A)
+        prices = model_a.price(S0, strikes, 1.0, R_A, "call", q=Q_A)
         assert np.all(np.diff(prices) < 0)
 
     def test_call_convex_in_strike(self, model_a):
         strikes = np.linspace(60.0, 140.0, 17)
-        prices = model_a.price(S0, strikes, 1.0, R_A, 'call', q=Q_A)
+        prices = model_a.price(S0, strikes, 1.0, R_A, "call", q=Q_A)
         second_diff = np.diff(prices, 2)
         # Butterfly spreads have nonnegative value (risk-neutral density >= 0)
         assert np.all(second_diff > -1e-8)
 
     def test_zero_strike_call_is_prepaid_forward(self, model_a):
-        c = model_a.price(S0, 0.0, 1.0, R_A, 'call', q=Q_A)
+        c = model_a.price(S0, 0.0, 1.0, R_A, "call", q=Q_A)
         assert abs(c - S0 * np.exp(-Q_A)) < 1e-12
-        p = model_a.price(S0, 0.0, 1.0, R_A, 'put', q=Q_A)
+        p = model_a.price(S0, 0.0, 1.0, R_A, "put", q=Q_A)
         assert p == 0.0
 
     def test_vectorized_price_matches_scalar(self, model_a):
         strikes = np.array([90.0, 100.0, 110.0])
-        vec = model_a.price(S0, strikes, 1.0, R_A, 'call', q=Q_A)
-        scalars = [model_a.price(S0, float(k), 1.0, R_A, 'call', q=Q_A)
-                   for k in strikes]
+        vec = model_a.price(S0, strikes, 1.0, R_A, "call", q=Q_A)
+        scalars = [model_a.price(S0, float(k), 1.0, R_A, "call", q=Q_A) for k in strikes]
         np.testing.assert_allclose(vec, scalars, rtol=0, atol=1e-14)
         assert vec.shape == (3,)
 
@@ -343,20 +351,19 @@ class TestParityAndBounds:
 # Gil-Pelaez quadrature vs Carr-Madan FFT
 # ──────────────────────────────────────────────
 
+
 class TestFourierVsFFT:
-    STRIKES = np.array([70.0, 80.0, 90.0, 95.0, 100.0, 105.0,
-                        110.0, 120.0, 140.0])
+    STRIKES = np.array([70.0, 80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0, 140.0])
 
     @pytest.mark.parametrize("T", [0.2, 1.0, 5.0])
     def test_call_surface_matches_quadrature(self, model_a, T):
         fft_p = model_a.price_surface(S0, self.STRIKES, T, R_A, q=Q_A)
-        quad_p = model_a.price(S0, self.STRIKES, T, R_A, 'call', q=Q_A)
+        quad_p = model_a.price(S0, self.STRIKES, T, R_A, "call", q=Q_A)
         np.testing.assert_allclose(fft_p, quad_p, rtol=0, atol=1e-6)
 
     def test_put_surface_matches_quadrature(self, model_a):
-        fft_p = model_a.price_surface(S0, self.STRIKES, 1.0, R_A, q=Q_A,
-                                      option_type='put')
-        quad_p = model_a.price(S0, self.STRIKES, 1.0, R_A, 'put', q=Q_A)
+        fft_p = model_a.price_surface(S0, self.STRIKES, 1.0, R_A, q=Q_A, option_type="put")
+        quad_p = model_a.price(S0, self.STRIKES, 1.0, R_A, "put", q=Q_A)
         np.testing.assert_allclose(fft_p, quad_p, rtol=0, atol=1e-6)
 
     def test_surface_validations(self, model_a):
@@ -390,12 +397,10 @@ class TestFourierVsFFT:
         t_star = m._moment_explosion_time(6.0)
         assert abs(t_star - 0.2476) < 1e-3
         # Below T*: prices fine; above: guard raises
-        prices = m.price_surface(S0, np.array([100.0]), 0.9 * t_star, 0.02,
-                                 alpha=5.0)
+        prices = m.price_surface(S0, np.array([100.0]), 0.9 * t_star, 0.02, alpha=5.0)
         assert np.isfinite(prices).all() and prices[0] > 0
         with pytest.raises(ValueError, match="diverges|explosion"):
-            m.price_surface(S0, np.array([100.0]), 1.1 * t_star, 0.02,
-                            alpha=5.0)
+            m.price_surface(S0, np.array([100.0]), 1.1 * t_star, 0.02, alpha=5.0)
 
     def test_moment_no_explosion_equity_params(self, model_a):
         # Equity-style rho < 0 with alpha = 1.5: a = 2.875 > 0,
@@ -412,12 +417,11 @@ class TestFourierVsFFT:
 # flat curves, Actual365Fixed with integer-day maturities so the year
 # fraction is exact. Generator script documented in the Phase 4 spec note.
 QL_PARAM_SETS = {
-    "A_equity_feller_violated": dict(v0=0.04, kappa=2.0, theta=0.04, xi=0.5,
-                                     rho=-0.7, r=0.05, q=0.02),
-    "B_feller_ok": dict(v0=0.09, kappa=3.0, theta=0.06, xi=0.4,
-                        rho=-0.5, r=0.03, q=0.0),
-    "C_stress_long_T": dict(v0=0.02, kappa=0.5, theta=0.08, xi=1.0,
-                            rho=-0.9, r=0.02, q=0.01),
+    "A_equity_feller_violated": dict(
+        v0=0.04, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7, r=0.05, q=0.02
+    ),
+    "B_feller_ok": dict(v0=0.09, kappa=3.0, theta=0.06, xi=0.4, rho=-0.5, r=0.03, q=0.0),
+    "C_stress_long_T": dict(v0=0.02, kappa=0.5, theta=0.08, xi=1.0, rho=-0.9, r=0.02, q=0.01),
 }
 
 QL_REFERENCE_PRICES = {
@@ -525,12 +529,14 @@ class TestQuantLibBenchmark:
     (parity covers the call).
     """
 
-    _models = {name: make_model(**{k: v for k, v in p.items()
-                                   if k not in ("r", "q")})
-               for name, p in QL_PARAM_SETS.items()}
+    _models = {
+        name: make_model(**{k: v for k, v in p.items() if k not in ("r", "q")})
+        for name, p in QL_PARAM_SETS.items()
+    }
 
     @pytest.mark.parametrize(
-        "key", sorted(QL_REFERENCE_PRICES),
+        "key",
+        sorted(QL_REFERENCE_PRICES),
         ids=lambda k: f"{k[0]}-K{k[1]:.0f}-T{k[2]}-{k[3]}",
     )
     def test_matches_quantlib(self, key):
@@ -545,10 +551,11 @@ class TestQuantLibBenchmark:
 # Greeks
 # ──────────────────────────────────────────────
 
+
 class TestHestonGreeks:
     def test_delta_matches_finite_difference(self, model_a):
         h = 1e-2
-        for K, opt in [(100.0, 'call'), (110.0, 'put'), (80.0, 'call')]:
+        for K, opt in [(100.0, "call"), (110.0, "put"), (80.0, "call")]:
             d = model_a.delta(S0, K, 1.0, R_A, opt, q=Q_A)
             p_up = model_a.price(S0 + h, K, 1.0, R_A, opt, q=Q_A)
             p_dn = model_a.price(S0 - h, K, 1.0, R_A, opt, q=Q_A)
@@ -557,74 +564,77 @@ class TestHestonGreeks:
     def test_gamma_matches_finite_difference(self, model_a):
         h = 0.05
         for K in (95.0, 105.0):
-            g = model_a.gamma(S0, K, 1.0, R_A, 'call', q=Q_A)
-            p_up = model_a.price(S0 + h, K, 1.0, R_A, 'call', q=Q_A)
-            p_0 = model_a.price(S0, K, 1.0, R_A, 'call', q=Q_A)
-            p_dn = model_a.price(S0 - h, K, 1.0, R_A, 'call', q=Q_A)
+            g = model_a.gamma(S0, K, 1.0, R_A, "call", q=Q_A)
+            p_up = model_a.price(S0 + h, K, 1.0, R_A, "call", q=Q_A)
+            p_0 = model_a.price(S0, K, 1.0, R_A, "call", q=Q_A)
+            p_dn = model_a.price(S0 - h, K, 1.0, R_A, "call", q=Q_A)
             assert abs(g - (p_up - 2 * p_0 + p_dn) / (h * h)) < 1e-5
 
     def test_put_call_delta_relation(self, model_a):
         # From parity: delta_call - delta_put = e^{-qT}
-        dc = model_a.delta(S0, 100, 1.0, R_A, 'call', q=Q_A)
-        dp = model_a.delta(S0, 100, 1.0, R_A, 'put', q=Q_A)
+        dc = model_a.delta(S0, 100, 1.0, R_A, "call", q=Q_A)
+        dp = model_a.delta(S0, 100, 1.0, R_A, "put", q=Q_A)
         assert abs((dc - dp) - np.exp(-Q_A)) < 1e-10
 
     def test_gamma_same_call_put_and_positive(self, model_a):
-        gc = model_a.gamma(S0, 100, 1.0, R_A, 'call', q=Q_A)
-        gp = model_a.gamma(S0, 100, 1.0, R_A, 'put', q=Q_A)
+        gc = model_a.gamma(S0, 100, 1.0, R_A, "call", q=Q_A)
+        gp = model_a.gamma(S0, 100, 1.0, R_A, "put", q=Q_A)
         assert gc == gp
         assert gc > 0
 
     def test_vega_positive_and_theta_negative_atm(self, model_a):
-        assert model_a.vega(S0, 100, 1.0, R_A, 'call', q=Q_A) > 0
+        assert model_a.vega(S0, 100, 1.0, R_A, "call", q=Q_A) > 0
         # ATM call theta is negative for these (standard) parameters
-        assert model_a.theta(S0, 100, 1.0, R_A, 'call', q=Q_A) < 0
+        assert model_a.theta(S0, 100, 1.0, R_A, "call", q=Q_A) < 0
 
     def test_rho_signs(self, model_a):
-        assert model_a.rho(S0, 100, 1.0, R_A, 'call', q=Q_A) > 0
-        assert model_a.rho(S0, 100, 1.0, R_A, 'put', q=Q_A) < 0
+        assert model_a.rho(S0, 100, 1.0, R_A, "call", q=Q_A) > 0
+        assert model_a.rho(S0, 100, 1.0, R_A, "put", q=Q_A) < 0
 
     def test_theta_matches_finite_difference(self, model_a):
         h = 1e-4
-        th = model_a.theta(S0, 100, 1.0, R_A, 'call', q=Q_A)
-        fd = (model_a.price(S0, 100, 1.0 - h, R_A, 'call', q=Q_A)
-              - model_a.price(S0, 100, 1.0 + h, R_A, 'call', q=Q_A)) / (2 * h)
+        th = model_a.theta(S0, 100, 1.0, R_A, "call", q=Q_A)
+        fd = (
+            model_a.price(S0, 100, 1.0 - h, R_A, "call", q=Q_A)
+            - model_a.price(S0, 100, 1.0 + h, R_A, "call", q=Q_A)
+        ) / (2 * h)
         assert abs(th - fd) < 1e-4
 
     def test_greeks_dict_complete(self, model_a):
-        g = model_a.greeks(S0, 100, 1.0, R_A, 'call', q=Q_A)
-        assert set(g) == {'price', 'delta', 'gamma', 'vega', 'theta', 'rho'}
-        assert abs(g['price'] - model_a.price(S0, 100, 1.0, R_A, 'call', q=Q_A)) < 1e-12
-        assert abs(g['delta'] - model_a.delta(S0, 100, 1.0, R_A, 'call', q=Q_A)) < 1e-12
+        g = model_a.greeks(S0, 100, 1.0, R_A, "call", q=Q_A)
+        assert set(g) == {"price", "delta", "gamma", "vega", "theta", "rho"}
+        assert abs(g["price"] - model_a.price(S0, 100, 1.0, R_A, "call", q=Q_A)) < 1e-12
+        assert abs(g["delta"] - model_a.delta(S0, 100, 1.0, R_A, "call", q=Q_A)) < 1e-12
 
     def test_model_greeks_chain_rule_coherence(self, model_a):
         # vega = dV/d sqrt(v0) and model_greeks v0 = dV/dv0 are computed by
         # two different FD paths; the exact chain rule links them:
         # dV/d sqrt(v0) = dV/dv0 * 2 sqrt(v0)
-        vega = model_a.vega(S0, 100, 1.0, R_A, 'call', q=Q_A)
-        dv0 = model_a.model_greeks(S0, 100, 1.0, R_A, 'call', q=Q_A)['v0']
+        vega = model_a.vega(S0, 100, 1.0, R_A, "call", q=Q_A)
+        dv0 = model_a.model_greeks(S0, 100, 1.0, R_A, "call", q=Q_A)["v0"]
         assert abs(vega - dv0 * 2 * np.sqrt(model_a.v0)) < 1e-3 * abs(vega)
 
     def test_model_greeks_signs(self, model_a):
-        mg = model_a.model_greeks(S0, 100, 1.0, R_A, 'call', q=Q_A)
-        assert set(mg) == {'v0', 'kappa', 'theta', 'xi', 'rho'}
+        mg = model_a.model_greeks(S0, 100, 1.0, R_A, "call", q=Q_A)
+        assert set(mg) == {"v0", "kappa", "theta", "xi", "rho"}
         # More initial variance / long-run variance -> higher option value
-        assert mg['v0'] > 0
-        assert mg['theta'] > 0
+        assert mg["v0"] > 0
+        assert mg["theta"] > 0
 
     def test_model_greeks_match_direct_bumps(self, model_a):
         # Independent recomputation of dV/dxi with a coarser bump
         h = 1e-3 * PARAMS_A["xi"]
         up = make_model(**{**PARAMS_A, "xi": PARAMS_A["xi"] + h})
         dn = make_model(**{**PARAMS_A, "xi": PARAMS_A["xi"] - h})
-        expected = (up.price(S0, 100, 1.0, R_A, 'call', q=Q_A)
-                    - dn.price(S0, 100, 1.0, R_A, 'call', q=Q_A)) / (2 * h)
-        got = model_a.model_greeks(S0, 100, 1.0, R_A, 'call', q=Q_A)['xi']
+        expected = (
+            up.price(S0, 100, 1.0, R_A, "call", q=Q_A) - dn.price(S0, 100, 1.0, R_A, "call", q=Q_A)
+        ) / (2 * h)
+        got = model_a.model_greeks(S0, 100, 1.0, R_A, "call", q=Q_A)["xi"]
         assert abs(got - expected) < 1e-8
 
     def test_greeks_vectorized(self, model_a):
         strikes = np.array([90.0, 100.0, 110.0])
-        d = model_a.delta(S0, strikes, 1.0, R_A, 'call', q=Q_A)
+        d = model_a.delta(S0, strikes, 1.0, R_A, "call", q=Q_A)
         assert d.shape == (3,)
         assert np.all(np.diff(d) < 0)  # call delta decreasing in strike
 
@@ -633,14 +643,21 @@ class TestHestonGreeks:
 # QE simulation
 # ──────────────────────────────────────────────
 
+
 class TestQESimulation:
     def test_parameter_validation(self):
         mc = MonteCarloEngine(n_paths=100, seed=1)
-        base = dict(S0=100, v0=0.04, T=1.0, r=0.05,
-                    kappa=2.0, theta=0.04, xi=0.5, rho=-0.7)
-        for field, bad in [("S0", -1.0), ("v0", 0.0), ("T", 0.0),
-                           ("kappa", 0.0), ("theta", -0.1), ("xi", 0.0),
-                           ("rho", 1.0), ("rho", -1.5)]:
+        base = dict(S0=100, v0=0.04, T=1.0, r=0.05, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7)
+        for field, bad in [
+            ("S0", -1.0),
+            ("v0", 0.0),
+            ("T", 0.0),
+            ("kappa", 0.0),
+            ("theta", -0.1),
+            ("xi", 0.0),
+            ("rho", 1.0),
+            ("rho", -1.5),
+        ]:
             kwargs = {**base, field: bad}
             with pytest.raises(ValueError):
                 mc.simulate_heston(**kwargs)
@@ -674,8 +691,9 @@ class TestQESimulation:
         # dt = 0.25 stresses the drift approximation; the corrected scheme
         # must stay unbiased even here.
         mc = MonteCarloEngine(n_paths=300_000, seed=7)
-        p = mc.simulate_heston(S0, 0.04, 1.0, 0.05, kappa=2.0, theta=0.04,
-                               xi=0.5, rho=-0.7, n_steps=4)
+        p = mc.simulate_heston(
+            S0, 0.04, 1.0, 0.05, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7, n_steps=4
+        )
         x = np.exp(-0.05) * p[:, -1]
         se = x.std(ddof=1) / np.sqrt(len(x))
         assert abs(x.mean() - S0) < 3 * se
@@ -684,9 +702,18 @@ class TestQESimulation:
         # The uncorrected textbook scheme remains available and unbiased
         # within statistical resolution at fine steps.
         mc = MonteCarloEngine(n_paths=200_000, seed=11)
-        p = mc.simulate_heston(S0, 0.04, 1.0, 0.05, kappa=2.0, theta=0.04,
-                               xi=0.5, rho=-0.7, n_steps=100,
-                               martingale_correction=False)
+        p = mc.simulate_heston(
+            S0,
+            0.04,
+            1.0,
+            0.05,
+            kappa=2.0,
+            theta=0.04,
+            xi=0.5,
+            rho=-0.7,
+            n_steps=100,
+            martingale_correction=False,
+        )
         x = np.exp(-0.05) * p[:, -1]
         se = x.std(ddof=1) / np.sqrt(len(x))
         assert abs(x.mean() - S0) < 3 * se
@@ -694,8 +721,7 @@ class TestQESimulation:
     def test_cir_exact_mean(self, qe_paths_a):
         # E[v_T | v_0] = theta + (v0 - theta) e^{-kappa T} (exact CIR moment)
         _, _, v_paths = qe_paths_a
-        v0, kappa, theta = (PARAMS_A["v0"], PARAMS_A["kappa"],
-                            PARAMS_A["theta"])
+        v0, kappa, theta = (PARAMS_A["v0"], PARAMS_A["kappa"], PARAMS_A["theta"])
         v_T = v_paths[:, -1]
         exact = theta + (v0 - theta) * np.exp(-kappa * 1.0)
         se = v_T.std(ddof=1) / np.sqrt(len(v_T))
@@ -708,11 +734,14 @@ class TestQESimulation:
         # 1.5% tolerance leaves a 5x margin while still failing for any
         # systematic moment error.
         _, _, v_paths = qe_paths_a
-        v0, kappa, theta, xi = (PARAMS_A["v0"], PARAMS_A["kappa"],
-                                PARAMS_A["theta"], PARAMS_A["xi"])
+        v0, kappa, theta, xi = (
+            PARAMS_A["v0"],
+            PARAMS_A["kappa"],
+            PARAMS_A["theta"],
+            PARAMS_A["xi"],
+        )
         e = np.exp(-kappa * 1.0)
-        exact = (v0 * xi**2 * e * (1 - e) / kappa
-                 + theta * xi**2 * (1 - e)**2 / (2 * kappa))
+        exact = v0 * xi**2 * e * (1 - e) / kappa + theta * xi**2 * (1 - e) ** 2 / (2 * kappa)
         assert abs(v_paths[:, -1].var(ddof=1) - exact) < 0.015 * exact
 
     def test_feller_violated_mass_at_zero(self, qe_paths_a):
@@ -724,24 +753,26 @@ class TestQESimulation:
 
     def test_reproducibility_via_reset(self):
         mc = MonteCarloEngine(n_paths=5_000, seed=99)
-        p1 = mc.simulate_heston(S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04,
-                                xi=0.5, rho=-0.7, n_steps=10)
+        p1 = mc.simulate_heston(
+            S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7, n_steps=10
+        )
         mc.reset()
-        p2 = mc.simulate_heston(S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04,
-                                xi=0.5, rho=-0.7, n_steps=10)
+        p2 = mc.simulate_heston(
+            S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7, n_steps=10
+        )
         np.testing.assert_array_equal(p1, p2)
 
     def test_default_returns_only_spot(self):
         mc = MonteCarloEngine(n_paths=100, seed=1)
-        out = mc.simulate_heston(S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04,
-                                 xi=0.5, rho=-0.7, n_steps=5)
+        out = mc.simulate_heston(
+            S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7, n_steps=5
+        )
         assert isinstance(out, np.ndarray)
         assert out.shape == (100, 6)
 
     def test_uses_engine_default_steps(self):
         mc = MonteCarloEngine(n_paths=50, n_steps=37, seed=1)
-        out = mc.simulate_heston(S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04,
-                                 xi=0.5, rho=-0.7)
+        out = mc.simulate_heston(S0, 0.04, 0.5, 0.05, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7)
         assert out.shape == (50, 38)
 
     def test_zero_correlation_terminal_moment(self):
@@ -749,8 +780,9 @@ class TestQESimulation:
         # and E[integral v dt] = theta T + (v0-theta)(1-e^{-kT})/k exactly.
         mc = MonteCarloEngine(n_paths=400_000, seed=21)
         v0, kappa, theta, xi = 0.09, 3.0, 0.06, 0.4
-        p = mc.simulate_heston(S0, v0, 2.0, 0.03, kappa=kappa, theta=theta,
-                               xi=xi, rho=0.0, n_steps=100)
+        p = mc.simulate_heston(
+            S0, v0, 2.0, 0.03, kappa=kappa, theta=theta, xi=xi, rho=0.0, n_steps=100
+        )
         log_ST = np.log(p[:, -1])
         int_v = theta * 2.0 + (v0 - theta) * (1 - np.exp(-kappa * 2.0)) / kappa
         exact = np.log(S0) + 0.03 * 2.0 - 0.5 * int_v
@@ -765,25 +797,30 @@ class TestFourierVsMC:
     def mc_setup(self):
         engine = MonteCarloEngine(n_paths=300_000, seed=5)
         paths = engine.simulate_heston(
-            S0, PARAMS_A["v0"], 1.0, R_A,
-            kappa=PARAMS_A["kappa"], theta=PARAMS_A["theta"],
-            xi=PARAMS_A["xi"], rho=PARAMS_A["rho"], q=Q_A, n_steps=200,
+            S0,
+            PARAMS_A["v0"],
+            1.0,
+            R_A,
+            kappa=PARAMS_A["kappa"],
+            theta=PARAMS_A["theta"],
+            xi=PARAMS_A["xi"],
+            rho=PARAMS_A["rho"],
+            q=Q_A,
+            n_steps=200,
         )
         return engine, paths
 
     @pytest.mark.parametrize("K", [80.0, 100.0, 120.0])
     def test_european_call(self, model_a, mc_setup, K):
         engine, paths = mc_setup
-        fourier = model_a.price(S0, K, 1.0, R_A, 'call', q=Q_A)
-        res = engine.price(lambda p: np.maximum(p[:, -1] - K, 0.0),
-                           paths, R_A, 1.0)
+        fourier = model_a.price(S0, K, 1.0, R_A, "call", q=Q_A)
+        res = engine.price(lambda p: np.maximum(p[:, -1] - K, 0.0), paths, R_A, 1.0)
         assert abs(res.price - fourier) < 3 * res.std_error
 
     def test_european_put(self, model_a, mc_setup):
         engine, paths = mc_setup
-        fourier = model_a.price(S0, 100.0, 1.0, R_A, 'put', q=Q_A)
-        res = engine.price(lambda p: np.maximum(100.0 - p[:, -1], 0.0),
-                           paths, R_A, 1.0)
+        fourier = model_a.price(S0, 100.0, 1.0, R_A, "put", q=Q_A)
+        res = engine.price(lambda p: np.maximum(100.0 - p[:, -1], 0.0), paths, R_A, 1.0)
         assert abs(res.price - fourier) < 3 * res.std_error
 
 
@@ -795,7 +832,7 @@ class TestExoticsUnderHeston:
 
     def test_asian_prices_and_differs_from_gbm(self, qe_paths_a):
         engine, paths, _ = qe_paths_a
-        asian = AsianOption(K=100.0, option_type='call', avg_type='arithmetic')
+        asian = AsianOption(K=100.0, option_type="call", avg_type="arithmetic")
         res_h = engine.price(asian.payoff, paths, R_A, 1.0)
         assert res_h.price > 0
 
@@ -804,7 +841,12 @@ class TestExoticsUnderHeston:
         # smile/path-dependence interaction is real, not noise).
         gbm_engine = MonteCarloEngine(n_paths=400_000, seed=43)
         gbm_paths = gbm_engine.simulate_gbm(
-            S0, 1.0, R_A, np.sqrt(PARAMS_A["theta"]), q=Q_A, n_steps=100,
+            S0,
+            1.0,
+            R_A,
+            np.sqrt(PARAMS_A["theta"]),
+            q=Q_A,
+            n_steps=100,
         )
         res_g = gbm_engine.price(asian.payoff, gbm_paths, R_A, 1.0)
         combined_se = float(np.hypot(res_h.std_error, res_g.std_error))
@@ -812,11 +854,11 @@ class TestExoticsUnderHeston:
 
     def test_barrier_under_heston_within_bounds(self, qe_paths_a, model_a):
         engine, paths, _ = qe_paths_a
-        barrier = BarrierOption(K=100.0, barrier=80.0,
-                                barrier_type='down-and-out',
-                                option_type='call')
+        barrier = BarrierOption(
+            K=100.0, barrier=80.0, barrier_type="down-and-out", option_type="call"
+        )
         res = engine.price(barrier.payoff, paths, R_A, 1.0)
-        vanilla = model_a.price(S0, 100.0, 1.0, R_A, 'call', q=Q_A)
+        vanilla = model_a.price(S0, 100.0, 1.0, R_A, "call", q=Q_A)
         # Knock-out is worth less than vanilla, more than zero
         assert 0.0 < res.price < vanilla
 
@@ -824,14 +866,15 @@ class TestExoticsUnderHeston:
         # KI + KO = vanilla holds path-by-path for ANY model, so it must
         # hold exactly (same paths) up to the MC error of the vanilla leg.
         engine, paths, _ = qe_paths_a
-        ko = BarrierOption(K=100.0, barrier=80.0,
-                           barrier_type='down-and-out', option_type='call')
-        ki = BarrierOption(K=100.0, barrier=80.0,
-                           barrier_type='down-and-in', option_type='call')
+        ko = BarrierOption(K=100.0, barrier=80.0, barrier_type="down-and-out", option_type="call")
+        ki = BarrierOption(K=100.0, barrier=80.0, barrier_type="down-and-in", option_type="call")
         res_ko = engine.price(ko.payoff, paths, R_A, 1.0)
         res_ki = engine.price(ki.payoff, paths, R_A, 1.0)
         res_van = engine.price(
-            lambda p: np.maximum(p[:, -1] - 100.0, 0.0), paths, R_A, 1.0,
+            lambda p: np.maximum(p[:, -1] - 100.0, 0.0),
+            paths,
+            R_A,
+            1.0,
         )
         assert abs((res_ko.price + res_ki.price) - res_van.price) < 1e-10
 
@@ -840,13 +883,13 @@ class TestExoticsUnderHeston:
 # Implied volatility smile / skew
 # ──────────────────────────────────────────────
 
+
 class TestVolatilitySmile:
     def _iv_curve(self, model, strikes, T, r, q):
         ivs = []
         for K in strikes:
-            price = model.price(S0, K, T, r, 'call', q=q)
-            ivs.append(BlackScholesModel.implied_vol(price, S0, K, T, r,
-                                                     'call', q=q))
+            price = model.price(S0, K, T, r, "call", q=q)
+            ivs.append(BlackScholesModel.implied_vol(price, S0, K, T, r, "call", q=q))
         return np.array(ivs)
 
     def test_negative_rho_produces_downward_skew(self, model_a):
@@ -880,11 +923,16 @@ class TestVolatilitySmile:
 # Calibration
 # ──────────────────────────────────────────────
 
+
 class TestFilterOptionQuotes:
     def _base_quote(self, **overrides):
-        quote = dict(strikes=np.array([100.0]), maturities=np.array([0.5]),
-                     bids=np.array([5.0]), asks=np.array([5.2]),
-                     volumes=np.array([50.0]))
+        quote = dict(
+            strikes=np.array([100.0]),
+            maturities=np.array([0.5]),
+            bids=np.array([5.0]),
+            asks=np.array([5.2]),
+            volumes=np.array([50.0]),
+        )
         quote.update(overrides)
         return quote
 
@@ -892,15 +940,18 @@ class TestFilterOptionQuotes:
         mask = filter_option_quotes(S0=100.0, **self._base_quote())
         assert mask.tolist() == [True]
 
-    @pytest.mark.parametrize("overrides", [
-        dict(bids=np.array([0.0])),                  # no bid
-        dict(asks=np.array([4.0])),                  # crossed market
-        dict(volumes=np.array([0.0])),               # no volume
-        dict(bids=np.array([0.5]), asks=np.array([5.0])),  # huge spread
-        dict(strikes=np.array([50.0])),              # outside moneyness band
-        dict(maturities=np.array([0.005])),          # below 1-week expiry
-        dict(maturities=np.array([5.0])),            # beyond LEAPS band
-    ])
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            dict(bids=np.array([0.0])),  # no bid
+            dict(asks=np.array([4.0])),  # crossed market
+            dict(volumes=np.array([0.0])),  # no volume
+            dict(bids=np.array([0.5]), asks=np.array([5.0])),  # huge spread
+            dict(strikes=np.array([50.0])),  # outside moneyness band
+            dict(maturities=np.array([0.005])),  # below 1-week expiry
+            dict(maturities=np.array([5.0])),  # beyond LEAPS band
+        ],
+    )
     def test_bad_quotes_dropped(self, overrides):
         mask = filter_option_quotes(S0=100.0, **self._base_quote(**overrides))
         assert mask.tolist() == [False]
@@ -910,8 +961,7 @@ class TestFilterOptionQuotes:
         with pytest.raises(ValueError, match="S0"):
             filter_option_quotes(S0=-1.0, **q)
         with pytest.raises(ValueError, match="equal length"):
-            filter_option_quotes(S0=100.0, **self._base_quote(
-                volumes=np.array([1.0, 2.0])))
+            filter_option_quotes(S0=100.0, **self._base_quote(volumes=np.array([1.0, 2.0])))
 
 
 class TestMarketDataHelpers:
@@ -919,6 +969,7 @@ class TestMarketDataHelpers:
 
     def test_select_expiries_samples_the_band(self):
         import datetime as dt
+
         today = dt.date(2026, 6, 11)
         # Daily expiries for 3 weeks, then monthlies out to 2 years —
         # the SPX failure mode: naive [:8] returns a 2-week wall.
@@ -934,6 +985,7 @@ class TestMarketDataHelpers:
 
     def test_select_expiries_keeps_all_when_few(self):
         import datetime as dt
+
         today = dt.date(2026, 6, 11)
         listed = [str(today + dt.timedelta(days=d)) for d in (30, 90, 365)]
         chosen = _select_expiries(listed, today, (0.02, 2.5), 8)
@@ -948,8 +1000,8 @@ class TestMarketDataHelpers:
         calls = {"strike": [], "bid": [], "ask": []}
         puts = {"strike": [], "bid": [], "ask": []}
         for K in strikes:
-            c = bs.price(100.0, K, T, r, 'call', q=true_q)
-            p = bs.price(100.0, K, T, r, 'put', q=true_q)
+            c = bs.price(100.0, K, T, r, "call", q=true_q)
+            p = bs.price(100.0, K, T, r, "put", q=true_q)
             calls["strike"].append(K)
             calls["bid"].append(c - 0.01)
             calls["ask"].append(c + 0.01)
@@ -961,13 +1013,11 @@ class TestMarketDataHelpers:
 
     def test_implied_dividend_yield_fallback(self):
         empty = {"strike": [], "bid": [], "ask": []}
-        got = _implied_dividend_yield(empty, empty, 100.0, 0.5, 0.04,
-                                      fallback=0.013)
+        got = _implied_dividend_yield(empty, empty, 100.0, 0.5, 0.04, fallback=0.013)
         assert got == 0.013
         # One-sided book (no put quotes) must also fall back
         calls = {"strike": [100.0], "bid": [5.0], "ask": [5.2]}
-        got = _implied_dividend_yield(calls, empty, 100.0, 0.5, 0.04,
-                                      fallback=0.013)
+        got = _implied_dividend_yield(calls, empty, 100.0, 0.5, 0.04, fallback=0.013)
         assert got == 0.013
 
 
@@ -1042,8 +1092,7 @@ class TestHestonCalibrator:
         # admissible region, trading fit quality for it.
         cal, strikes, maturities, ivs = surface
         plain = cal.calibrate(strikes, maturities, ivs, n_starts=1)
-        penalized = cal.calibrate(strikes, maturities, ivs, n_starts=1,
-                                  feller_penalty=10.0)
+        penalized = cal.calibrate(strikes, maturities, ivs, n_starts=1, feller_penalty=10.0)
         assert not plain.feller_satisfied
         assert penalized.feller_satisfied
         assert penalized.rmse_iv > plain.rmse_iv
@@ -1057,15 +1106,16 @@ class TestHestonCalibrator:
         corrupted[15] -= 0.10
         w = np.ones_like(ivs)
         w[[3, 15]] = 0.0
-        res = cal.calibrate(strikes, maturities, corrupted, weights=w,
-                            n_starts=1)
+        res = cal.calibrate(strikes, maturities, corrupted, weights=w, n_starts=1)
         assert abs(res.params["v0"] - self.TRUE["v0"]) < 1e-4
         assert abs(res.params["rho"] - self.TRUE["rho"]) < 1e-3
 
     def test_explicit_starts(self, surface):
         cal, strikes, maturities, ivs = surface
         res = cal.calibrate(
-            strikes, maturities, ivs,
+            strikes,
+            maturities,
+            ivs,
             starts=[dict(v0=0.09, kappa=4.0, theta=0.09, xi=0.2, rho=-0.1)],
             n_starts=1,
         )
@@ -1078,8 +1128,7 @@ class TestHestonCalibrator:
         # T = 0.2 can. model_ivs must mark, not crash.
         cal = HestonCalibrator(S0, 0.02, 0.0)
         m = make_model(v0=0.09, kappa=0.3, theta=0.09, xi=1.5, rho=0.9)
-        ivs = cal.model_ivs(m, np.array([100.0, 100.0]),
-                            np.array([0.2, 5.0]))
+        ivs = cal.model_ivs(m, np.array([100.0, 100.0]), np.array([0.2, 5.0]))
         assert np.isfinite(ivs[0])
         assert np.isnan(ivs[1])
 
@@ -1088,23 +1137,27 @@ class TestHestonCalibrator:
 # Property-based tests (Hypothesis)
 # ──────────────────────────────────────────────
 
-heston_params = st.fixed_dictionaries({
-    "v0": st.floats(0.005, 0.25),
-    "kappa": st.floats(0.2, 8.0),
-    "theta": st.floats(0.005, 0.25),
-    "xi": st.floats(0.05, 1.2),
-    # rho capped at 0.5: strongly positive rho with long maturities sits in
-    # the moment-explosion region (Andersen-Piterbarg 2007) — a genuine
-    # model property, not an implementation artifact, and irrelevant for
-    # equity (rho < 0).
-    "rho": st.floats(-0.95, 0.5),
-})
-market = st.fixed_dictionaries({
-    "K": st.floats(50.0, 200.0),
-    "T": st.floats(0.05, 3.0),
-    "r": st.floats(-0.02, 0.10),
-    "q": st.floats(0.0, 0.06),
-})
+heston_params = st.fixed_dictionaries(
+    {
+        "v0": st.floats(0.005, 0.25),
+        "kappa": st.floats(0.2, 8.0),
+        "theta": st.floats(0.005, 0.25),
+        "xi": st.floats(0.05, 1.2),
+        # rho capped at 0.5: strongly positive rho with long maturities sits in
+        # the moment-explosion region (Andersen-Piterbarg 2007) — a genuine
+        # model property, not an implementation artifact, and irrelevant for
+        # equity (rho < 0).
+        "rho": st.floats(-0.95, 0.5),
+    }
+)
+market = st.fixed_dictionaries(
+    {
+        "K": st.floats(50.0, 200.0),
+        "T": st.floats(0.05, 3.0),
+        "r": st.floats(-0.02, 0.10),
+        "q": st.floats(0.0, 0.06),
+    }
+)
 
 
 class TestHestonProperties:
@@ -1118,31 +1171,28 @@ class TestHestonProperties:
     # projected value, so parity is exact by construction — the tolerance
     # only absorbs float roundoff.
     @example(
-        params={"v0": 0.005, "kappa": 1.0, "theta": 0.015625, "xi": 1.0,
-                "rho": -0.875},
+        params={"v0": 0.005, "kappa": 1.0, "theta": 0.015625, "xi": 1.0, "rho": -0.875},
         mkt={"K": 50.0, "T": 0.0625, "r": 0.0, "q": 0.0},
     )
     def test_put_call_parity_random(self, params, mkt):
         m = make_model(**params)
-        c = m.price(S0, mkt["K"], mkt["T"], mkt["r"], 'call', q=mkt["q"])
-        p = m.price(S0, mkt["K"], mkt["T"], mkt["r"], 'put', q=mkt["q"])
-        rhs = (S0 * np.exp(-mkt["q"] * mkt["T"])
-               - mkt["K"] * np.exp(-mkt["r"] * mkt["T"]))
+        c = m.price(S0, mkt["K"], mkt["T"], mkt["r"], "call", q=mkt["q"])
+        p = m.price(S0, mkt["K"], mkt["T"], mkt["r"], "put", q=mkt["q"])
+        rhs = S0 * np.exp(-mkt["q"] * mkt["T"]) - mkt["K"] * np.exp(-mkt["r"] * mkt["T"])
         assert abs((c - p) - rhs) < 1e-8
 
     @given(params=heston_params, mkt=market)
     @settings(max_examples=300, deadline=None)
     def test_price_within_bounds_random(self, params, mkt):
         m = make_model(**params)
-        c = m.price(S0, mkt["K"], mkt["T"], mkt["r"], 'call', q=mkt["q"])
-        lower = max(S0 * np.exp(-mkt["q"] * mkt["T"])
-                    - mkt["K"] * np.exp(-mkt["r"] * mkt["T"]), 0.0)
+        c = m.price(S0, mkt["K"], mkt["T"], mkt["r"], "call", q=mkt["q"])
+        lower = max(
+            S0 * np.exp(-mkt["q"] * mkt["T"]) - mkt["K"] * np.exp(-mkt["r"] * mkt["T"]), 0.0
+        )
         upper = S0 * np.exp(-mkt["q"] * mkt["T"])
         assert lower - 1e-7 <= c <= upper + 1e-7
 
-    @given(params=heston_params,
-           T=st.floats(0.05, 5.0),
-           u=st.floats(0.01, 50.0))
+    @given(params=heston_params, T=st.floats(0.05, 5.0), u=st.floats(0.01, 50.0))
     @settings(max_examples=500, deadline=None)
     def test_cf_modulus_bounded_random(self, params, T, u):
         m = make_model(**params)
@@ -1161,6 +1211,6 @@ class TestHestonProperties:
     @settings(max_examples=200, deadline=None)
     def test_call_decreasing_in_strike_random(self, params):
         m = make_model(**params)
-        c_low = m.price(S0, 90.0, 1.0, 0.03, 'call')
-        c_high = m.price(S0, 110.0, 1.0, 0.03, 'call')
+        c_low = m.price(S0, 90.0, 1.0, 0.03, "call")
+        c_high = m.price(S0, 110.0, 1.0, 0.03, "call")
         assert c_low > c_high

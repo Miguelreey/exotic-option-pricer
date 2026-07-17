@@ -67,8 +67,9 @@ class BlackScholesModel(PricingModel):
             )
         if sigma > 5.0:
             warnings.warn(
-                f"sigma={sigma} is unusually large. Did you mean {sigma/100:.4f}?",
-                UserWarning, stacklevel=2,
+                f"sigma={sigma} is unusually large. Did you mean {sigma / 100:.4f}?",
+                UserWarning,
+                stacklevel=2,
             )
         self.sigma: float = sigma
 
@@ -79,8 +80,9 @@ class BlackScholesModel(PricingModel):
     # Core: d1, d2
     # ──────────────────────────────────────────────
 
-    def _compute_d1_d2(self, S: Numeric, K: Numeric, T: Numeric,
-                       r: Numeric, q: float = 0.0) -> tuple:
+    def _compute_d1_d2(
+        self, S: Numeric, K: Numeric, T: Numeric, r: Numeric, q: float = 0.0
+    ) -> tuple:
         """
         d1 = [ln(S/K) + (r - q + sigma^2/2)T] / (sigma*sqrt(T))
         d2 = d1 - sigma*sqrt(T)
@@ -110,8 +112,15 @@ class BlackScholesModel(PricingModel):
     # Price
     # ──────────────────────────────────────────────
 
-    def price(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def price(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         European option price.
 
@@ -137,7 +146,7 @@ class BlackScholesModel(PricingModel):
         disc_r = np.exp(-r * T)
         disc_q = np.exp(-q * T)
 
-        if opt == 'call':
+        if opt == "call":
             p = S * disc_q * ndtr(d1) - K * disc_r * ndtr(d2)
         else:
             p = K * disc_r * ndtr(-d2) - S * disc_q * ndtr(-d1)
@@ -149,18 +158,32 @@ class BlackScholesModel(PricingModel):
     # First-order Greeks
     # ──────────────────────────────────────────────
 
-    def delta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def delta(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Delta = dV/dS. Call: exp(-qT)*N(d1). Put: -exp(-qT)*N(-d1)."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         d1, _ = self._compute_d1_d2(S, K, T, r, q)
         disc_q = np.exp(-q * T)
-        result = disc_q * ndtr(d1) if opt == 'call' else -disc_q * ndtr(-d1)
+        result = disc_q * ndtr(d1) if opt == "call" else -disc_q * ndtr(-d1)
         return float(result) if np.ndim(result) == 0 else result
 
-    def gamma(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def gamma(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Gamma = d²V/dS². Same for call/put. = exp(-qT)*phi(d1)/(S*sigma*sqrt(T))."""
         self._validate_inputs(S, K, T, r)
         self._validate_option_type(option_type)
@@ -170,8 +193,15 @@ class BlackScholesModel(PricingModel):
         result = np.exp(-q * T) * _norm_pdf(d1) / (S * self.sigma * np.sqrt(T))
         return float(result) if np.ndim(result) == 0 else result
 
-    def vega(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-             option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def vega(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Vega = dV/dsigma. Same for call/put. = S*exp(-qT)*phi(d1)*sqrt(T)."""
         self._validate_inputs(S, K, T, r)
         self._validate_option_type(option_type)
@@ -181,8 +211,15 @@ class BlackScholesModel(PricingModel):
         result = S * np.exp(-q * T) * _norm_pdf(d1) * np.sqrt(T)
         return float(result) if np.ndim(result) == 0 else result
 
-    def theta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def theta(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Theta = dV/dt (per year). Typically negative for long positions.
 
@@ -205,14 +242,21 @@ class BlackScholesModel(PricingModel):
         sqrt_T = np.sqrt(T)
 
         time_decay = -S * disc_q * phi_d1 * self.sigma / (2.0 * sqrt_T)
-        if opt == 'call':
+        if opt == "call":
             result = time_decay + q * S * disc_q * ndtr(d1) - r * K * disc_r * ndtr(d2)
         else:
             result = time_decay - q * S * disc_q * ndtr(-d1) + r * K * disc_r * ndtr(-d2)
         return float(result) if np.ndim(result) == 0 else result
 
-    def rho(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-            option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def rho(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Rho = dV/dr. Call: K*T*exp(-rT)*N(d2). Put: -K*T*exp(-rT)*N(-d2)."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
@@ -221,7 +265,7 @@ class BlackScholesModel(PricingModel):
         r = np.asarray(r, dtype=np.float64)
         _, d2 = self._compute_d1_d2(S, K, T, r, q)
         disc_r = np.exp(-r * T)
-        if opt == 'call':
+        if opt == "call":
             result = K * T * disc_r * ndtr(d2)
         else:
             result = -K * T * disc_r * ndtr(-d2)
@@ -231,8 +275,15 @@ class BlackScholesModel(PricingModel):
     # Second-order Greeks
     # ──────────────────────────────────────────────
 
-    def vanna(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def vanna(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Vanna = d²V/(dS dsigma) = dDelta/dsigma = dVega/dS.
         = -exp(-qT) * phi(d1) * d2 / sigma. Same for call/put.
@@ -243,8 +294,15 @@ class BlackScholesModel(PricingModel):
         result = -np.exp(-q * T) * _norm_pdf(d1) * d2 / self.sigma
         return float(result) if np.ndim(result) == 0 else result
 
-    def volga(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def volga(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Volga (Vomma) = d²V/dsigma² = dVega/dsigma.
         = vega * d1 * d2 / sigma. Same for call/put.
@@ -258,8 +316,15 @@ class BlackScholesModel(PricingModel):
         result = v * d1 * d2 / self.sigma
         return float(result) if np.ndim(result) == 0 else result
 
-    def charm(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def charm(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Charm (delta decay) = -dDelta/dT = dDelta/dt.
 
@@ -275,15 +340,24 @@ class BlackScholesModel(PricingModel):
         sigma = self.sigma
         sqrt_T = np.sqrt(T)
 
-        common = -disc_q * phi_d1 * (2*(r - q)*T - d2*sigma*sqrt_T) / (2*sigma*T*sqrt_T)
-        if opt == 'call':
+        common = (
+            -disc_q * phi_d1 * (2 * (r - q) * T - d2 * sigma * sqrt_T) / (2 * sigma * T * sqrt_T)
+        )
+        if opt == "call":
             result = q * disc_q * ndtr(d1) + common
         else:
             result = -q * disc_q * ndtr(-d1) + common
         return float(result) if np.ndim(result) == 0 else result
 
-    def speed(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def speed(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Speed = dGamma/dS = d³V/dS³.
         = -Gamma/S * [d1/(sigma*sqrt(T)) + 1]. Same for call/put.
@@ -297,8 +371,15 @@ class BlackScholesModel(PricingModel):
         result = -g / S * (d1 / (self.sigma * np.sqrt(T)) + 1.0)
         return float(result) if np.ndim(result) == 0 else result
 
-    def zomma(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def zomma(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Zomma = dGamma/dsigma. = Gamma * (d1*d2 - 1) / sigma. Same for call/put.
         """
@@ -311,8 +392,15 @@ class BlackScholesModel(PricingModel):
         result = g * (d1 * d2 - 1.0) / self.sigma
         return float(result) if np.ndim(result) == 0 else result
 
-    def color(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def color(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Color = dGamma/dt = -dGamma/dT.
         = -Gamma/(2T) * [2qT + 1 + d1*(2(r-q)T - d2*sigma*sqrt(T))/(sigma*sqrt(T))].
@@ -326,7 +414,7 @@ class BlackScholesModel(PricingModel):
         sigma = self.sigma
         sqrt_T = np.sqrt(T)
         g = np.exp(-q * T) * _norm_pdf(d1) / (S * sigma * sqrt_T)
-        bracket = 2*q*T + 1.0 + d1 * (2*(r - q)*T - d2*sigma*sqrt_T) / (sigma * sqrt_T)
+        bracket = 2 * q * T + 1.0 + d1 * (2 * (r - q) * T - d2 * sigma * sqrt_T) / (sigma * sqrt_T)
         result = -g / (2.0 * T) * bracket
         return float(result) if np.ndim(result) == 0 else result
 
@@ -334,8 +422,15 @@ class BlackScholesModel(PricingModel):
     # Dual Greeks (strike sensitivities)
     # ──────────────────────────────────────────────
 
-    def dual_delta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-                   option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def dual_delta(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Dual delta = dV/dK.
         Call: -exp(-rT)*N(d2).  Put: exp(-rT)*N(-d2).
@@ -346,11 +441,18 @@ class BlackScholesModel(PricingModel):
         r = np.asarray(r, dtype=np.float64)
         _, d2 = self._compute_d1_d2(S, K, T, r, q)
         disc_r = np.exp(-r * T)
-        result = -disc_r * ndtr(d2) if opt == 'call' else disc_r * ndtr(-d2)
+        result = -disc_r * ndtr(d2) if opt == "call" else disc_r * ndtr(-d2)
         return float(result) if np.ndim(result) == 0 else result
 
-    def dual_gamma(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-                   option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def dual_gamma(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Dual gamma = d²V/dK².  = exp(-rT)*phi(d2)/(K*sigma*sqrt(T)).
         Same for call/put. Proportional to risk-neutral density (Breeden-Litzenberger).
@@ -368,17 +470,31 @@ class BlackScholesModel(PricingModel):
     # Utility methods
     # ──────────────────────────────────────────────
 
-    def probability_itm(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-                        option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def probability_itm(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Risk-neutral probability of finishing ITM. Call: N(d2). Put: N(-d2)."""
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
         _, d2 = self._compute_d1_d2(S, K, T, r, q)
-        result = ndtr(d2) if opt == 'call' else ndtr(-d2)
+        result = ndtr(d2) if opt == "call" else ndtr(-d2)
         return float(result) if np.ndim(result) == 0 else result
 
-    def elasticity(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-                   option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def elasticity(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         Lambda (elasticity/leverage) = Delta * S / V.
         Measures percentage change in option per 1% change in underlying.
@@ -397,9 +513,17 @@ class BlackScholesModel(PricingModel):
     # ──────────────────────────────────────────────
 
     @staticmethod
-    def implied_vol(price_market: float, S: float, K: float, T: float, r: float,
-                    option_type: str = 'call', q: float = 0.0,
-                    tol: float = 1e-12, max_iter: int = 20) -> float:
+    def implied_vol(
+        price_market: float,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        option_type: str = "call",
+        q: float = 0.0,
+        tol: float = 1e-12,
+        max_iter: int = 20,
+    ) -> float:
         """
         Compute implied volatility via Halley's method (cubic convergence).
 
@@ -449,7 +573,7 @@ class BlackScholesModel(PricingModel):
         sqrt_T = np.sqrt(T)
 
         # No-arbitrage bounds
-        if opt == 'call':
+        if opt == "call":
             lb = max(S * disc_q - K * disc_r, 0.0)
             ub = S * disc_q
         else:
@@ -457,13 +581,9 @@ class BlackScholesModel(PricingModel):
             ub = K * disc_r
 
         if price_market < lb - 1e-10:
-            raise ValueError(
-                f"Price {price_market:.6f} below no-arbitrage bound {lb:.6f}"
-            )
+            raise ValueError(f"Price {price_market:.6f} below no-arbitrage bound {lb:.6f}")
         if price_market > ub + 1e-10:
-            raise ValueError(
-                f"Price {price_market:.6f} above no-arbitrage bound {ub:.6f}"
-            )
+            raise ValueError(f"Price {price_market:.6f} above no-arbitrage bound {ub:.6f}")
 
         log_SK = np.log(S / K) if K > 0 else 50.0
 
@@ -488,7 +608,7 @@ class BlackScholesModel(PricingModel):
             d2 = d1 - sigma_sqrt_T
             phi_d1 = _norm_pdf(d1)
 
-            if opt == 'call':
+            if opt == "call":
                 p = max(S * disc_q * ndtr(d1) - K * disc_r * ndtr(d2), 0.0)
             else:
                 p = max(K * disc_r * ndtr(-d2) - S * disc_q * ndtr(-d1), 0.0)
@@ -520,7 +640,7 @@ class BlackScholesModel(PricingModel):
             ssqt = sig * sqrt_T
             dd1 = (log_SK + (r - q + 0.5 * sig**2) * T) / ssqt
             dd2 = dd1 - ssqt
-            if opt == 'call':
+            if opt == "call":
                 return max(S * disc_q * ndtr(dd1) - K * disc_r * ndtr(dd2), 0.0) - price_market
             else:
                 return max(K * disc_r * ndtr(-dd2) - S * disc_q * ndtr(-dd1), 0.0) - price_market
@@ -528,14 +648,21 @@ class BlackScholesModel(PricingModel):
         try:
             return float(brentq(obj, 1e-6, 10.0, xtol=tol, maxiter=500))
         except ValueError:
-            return float('nan')
+            return float("nan")
 
     # ──────────────────────────────────────────────
     # Batch Greeks (single-pass, avoids redundant d1/d2)
     # ──────────────────────────────────────────────
 
-    def greeks(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-               option_type: str = 'call', q: float = 0.0) -> Dict[str, Numeric]:
+    def greeks(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Dict[str, Numeric]:
         """
         Compute all Greeks in a single pass.
 
@@ -566,11 +693,14 @@ class BlackScholesModel(PricingModel):
         Nn_d2 = ndtr(-d2)
 
         # ----- Price -----
-        if opt == 'call':
+        if opt == "call":
             price = np.maximum(S * disc_q * N_d1 - K * disc_r * N_d2, 0.0)
             delta_val = disc_q * N_d1
-            theta_val = (-S * disc_q * phi_d1 * sigma / (2*sqrt_T)
-                         + q * S * disc_q * N_d1 - r * K * disc_r * N_d2)
+            theta_val = (
+                -S * disc_q * phi_d1 * sigma / (2 * sqrt_T)
+                + q * S * disc_q * N_d1
+                - r * K * disc_r * N_d2
+            )
             rho_val = K * T * disc_r * N_d2
             dd_val = -disc_r * N_d2
             charm_n = q * disc_q * N_d1
@@ -578,8 +708,11 @@ class BlackScholesModel(PricingModel):
         else:
             price = np.maximum(K * disc_r * Nn_d2 - S * disc_q * Nn_d1, 0.0)
             delta_val = -disc_q * Nn_d1
-            theta_val = (-S * disc_q * phi_d1 * sigma / (2*sqrt_T)
-                         - q * S * disc_q * Nn_d1 + r * K * disc_r * Nn_d2)
+            theta_val = (
+                -S * disc_q * phi_d1 * sigma / (2 * sqrt_T)
+                - q * S * disc_q * Nn_d1
+                + r * K * disc_r * Nn_d2
+            )
             rho_val = -K * T * disc_r * Nn_d2
             dd_val = disc_r * Nn_d2
             charm_n = -q * disc_q * Nn_d1
@@ -592,21 +725,35 @@ class BlackScholesModel(PricingModel):
         volga_val = vega_val * d1 * d2 / sigma
         speed_val = -gamma_val / S * (d1 / sigma_sqrt_T + 1.0)
         zomma_val = gamma_val * (d1 * d2 - 1.0) / sigma
-        charm_common = -disc_q * phi_d1 * (2*(r-q)*T - d2*sigma*sqrt_T) / (2*sigma*T*sqrt_T)
+        charm_common = (
+            -disc_q * phi_d1 * (2 * (r - q) * T - d2 * sigma * sqrt_T) / (2 * sigma * T * sqrt_T)
+        )
         charm_val = charm_n + charm_common
-        color_bracket = 2*q*T + 1.0 + d1*(2*(r-q)*T - d2*sigma*sqrt_T) / (sigma*sqrt_T)
+        color_bracket = (
+            2 * q * T + 1.0 + d1 * (2 * (r - q) * T - d2 * sigma * sqrt_T) / (sigma * sqrt_T)
+        )
         color_val = -gamma_val / (2.0 * T) * color_bracket
         dg_val = disc_r * phi_d2 / (K * sigma * sqrt_T)
         safe_price = np.where(np.abs(price) > 1e-15, price, 1.0)
         elast_val = np.where(np.abs(price) > 1e-15, delta_val * S / safe_price, np.nan)
 
         res = {
-            'price': price, 'delta': delta_val, 'gamma': gamma_val,
-            'vega': vega_val, 'theta': theta_val, 'rho': rho_val,
-            'vanna': vanna_val, 'volga': volga_val, 'charm': charm_val,
-            'speed': speed_val, 'zomma': zomma_val, 'color': color_val,
-            'dual_delta': dd_val, 'dual_gamma': dg_val,
-            'probability_itm': prob_itm, 'elasticity': elast_val,
+            "price": price,
+            "delta": delta_val,
+            "gamma": gamma_val,
+            "vega": vega_val,
+            "theta": theta_val,
+            "rho": rho_val,
+            "vanna": vanna_val,
+            "volga": volga_val,
+            "charm": charm_val,
+            "speed": speed_val,
+            "zomma": zomma_val,
+            "color": color_val,
+            "dual_delta": dd_val,
+            "dual_gamma": dg_val,
+            "probability_itm": prob_itm,
+            "elasticity": elast_val,
         }
         return {k: float(v) if np.ndim(v) == 0 else v for k, v in res.items()}
 

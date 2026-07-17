@@ -63,7 +63,12 @@ from .base import ExoticOption
 
 
 def _compute_d1_d2(
-    S: float, K: float, T: float, r: float, sigma: float, q: float,
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float,
 ) -> tuple[float, float]:
     """
     Standard Black-Scholes d_1 and d_2.
@@ -148,15 +153,11 @@ class DigitalOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         pay = payout_type.strip().lower()
         if pay not in ("cash", "asset"):
-            raise ValueError(
-                f"payout_type must be 'cash' or 'asset', got '{payout_type}'"
-            )
+            raise ValueError(f"payout_type must be 'cash' or 'asset', got '{payout_type}'")
 
         if cash_amount < 0:
             raise ValueError(f"cash_amount must be >= 0, got {cash_amount}")
@@ -291,15 +292,11 @@ class DigitalOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         pay = payout_type.strip().lower()
         if pay not in ("cash", "asset"):
-            raise ValueError(
-                f"payout_type must be 'cash' or 'asset', got '{payout_type}'"
-            )
+            raise ValueError(f"payout_type must be 'cash' or 'asset', got '{payout_type}'")
 
         d1, d2 = _compute_d1_d2(S, K, T, r, sigma, q)
 
@@ -320,10 +317,7 @@ class DigitalOption(ExoticOption):
                 f"DigitalOption(K={self.K}, type='{self._option_type}', "
                 f"payout='cash', Q={self.cash_amount})"
             )
-        return (
-            f"DigitalOption(K={self.K}, type='{self._option_type}', "
-            f"payout='asset')"
-        )
+        return f"DigitalOption(K={self.K}, type='{self._option_type}', payout='asset')"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DigitalOption):

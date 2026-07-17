@@ -171,7 +171,12 @@ def _norm_pdf(x: float) -> float:
 
 
 def _floating_call(
-    S: float, S_min: float, T: float, r: float, sigma: float, q: float,
+    S: float,
+    S_min: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float,
 ) -> float:
     """
     Goldman-Sosin-Gatto (1979) floating-strike lookback call.
@@ -195,10 +200,9 @@ def _floating_call(
 
     two_b_over_sig2 = 2.0 * b / (sigma * sigma)
     shift = 2.0 * b * np.sqrt(T) / sigma
-    bracket = (
-        np.exp(-r * T) * (S / S_min) ** (-two_b_over_sig2) * ndtr(-a1 + shift)
-        - np.exp(-q * T) * ndtr(-a1)
-    )
+    bracket = np.exp(-r * T) * (S / S_min) ** (-two_b_over_sig2) * ndtr(-a1 + shift) - np.exp(
+        -q * T
+    ) * ndtr(-a1)
     value = (
         S * np.exp(-q * T) * ndtr(a1)
         - S_min * np.exp(-r * T) * ndtr(a2)
@@ -208,8 +212,13 @@ def _floating_call(
 
 
 def _floating_call_zero_drift(
-    S: float, S_min: float, T: float, r: float, sigma: float,
-    a1: float, a2: float,
+    S: float,
+    S_min: float,
+    T: float,
+    r: float,
+    sigma: float,
+    a1: float,
+    a2: float,
 ) -> float:
     """
     L'Hopital limit of the floating-strike lookback call as ``r -> q``.
@@ -246,14 +255,17 @@ def _floating_call_zero_drift(
         - ln_ratio * ndtr(-a1)
         - 0.5 * sigma * sigma * T * ndtr(-a1)
     )
-    value = disc * (
-        S * ndtr(a1) - S_min * ndtr(a2) + limit_term
-    )
+    value = disc * (S * ndtr(a1) - S_min * ndtr(a2) + limit_term)
     return float(value)
 
 
 def _floating_put(
-    S: float, S_max: float, T: float, r: float, sigma: float, q: float,
+    S: float,
+    S_max: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float,
 ) -> float:
     """
     Goldman-Sosin-Gatto (1979) floating-strike lookback put.
@@ -275,10 +287,9 @@ def _floating_put(
 
     two_b_over_sig2 = 2.0 * b / (sigma * sigma)
     shift = 2.0 * b * np.sqrt(T) / sigma
-    bracket = (
-        -np.exp(-r * T) * (S / S_max) ** (-two_b_over_sig2) * ndtr(b1 - shift)
-        + np.exp(-q * T) * ndtr(b1)
-    )
+    bracket = -np.exp(-r * T) * (S / S_max) ** (-two_b_over_sig2) * ndtr(b1 - shift) + np.exp(
+        -q * T
+    ) * ndtr(b1)
     value = (
         -S * np.exp(-q * T) * ndtr(-b1)
         + S_max * np.exp(-r * T) * ndtr(-b2)
@@ -288,8 +299,13 @@ def _floating_put(
 
 
 def _floating_put_zero_drift(
-    S: float, S_max: float, T: float, r: float, sigma: float,
-    b1: float, b2: float,
+    S: float,
+    S_max: float,
+    T: float,
+    r: float,
+    sigma: float,
+    b1: float,
+    b2: float,
 ) -> float:
     """
     L'Hopital limit of the floating-strike lookback put as ``r -> q``.
@@ -318,14 +334,17 @@ def _floating_put_zero_drift(
         + ln_ratio * ndtr(b1)
         + 0.5 * sigma * sigma * T * ndtr(b1)
     )
-    value = disc * (
-        -S * ndtr(-b1) + S_max * ndtr(-b2) + limit_term
-    )
+    value = disc * (-S * ndtr(-b1) + S_max * ndtr(-b2) + limit_term)
     return float(value)
 
 
 def _fixed_call(
-    S: float, M: float, T: float, r: float, sigma: float, q: float,
+    S: float,
+    M: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float,
 ) -> float:
     """
     Conze-Viswanathan (1991) fixed-strike lookback call formula.
@@ -366,10 +385,7 @@ def _fixed_call(
 
     two_b_over_sig2 = 2.0 * b / (sigma * sigma)
     shift = 2.0 * b * np.sqrt(T) / sigma
-    bracket = (
-        -((S / M) ** (-two_b_over_sig2)) * ndtr(e1 - shift)
-        + np.exp(b * T) * ndtr(e1)
-    )
+    bracket = -((S / M) ** (-two_b_over_sig2)) * ndtr(e1 - shift) + np.exp(b * T) * ndtr(e1)
     value = (
         S * np.exp(-q * T) * ndtr(e1)
         - M * np.exp(-r * T) * ndtr(e2)
@@ -379,8 +395,13 @@ def _fixed_call(
 
 
 def _fixed_call_zero_drift(
-    S: float, M: float, T: float, r: float, sigma: float,
-    e1: float, e2: float,
+    S: float,
+    M: float,
+    T: float,
+    r: float,
+    sigma: float,
+    e1: float,
+    e2: float,
 ) -> float:
     """
     L'Hopital limit of the fixed-strike lookback call as ``r -> q``.
@@ -419,7 +440,12 @@ def _fixed_call_zero_drift(
 
 
 def _fixed_put(
-    S: float, M: float, T: float, r: float, sigma: float, q: float,
+    S: float,
+    M: float,
+    T: float,
+    r: float,
+    sigma: float,
+    q: float,
 ) -> float:
     """
     Conze-Viswanathan (1991) fixed-strike lookback put formula.
@@ -445,10 +471,7 @@ def _fixed_put(
 
     two_b_over_sig2 = 2.0 * b / (sigma * sigma)
     shift = 2.0 * b * np.sqrt(T) / sigma
-    bracket = (
-        ((S / M) ** (-two_b_over_sig2)) * ndtr(-e1 + shift)
-        - np.exp(b * T) * ndtr(-e1)
-    )
+    bracket = ((S / M) ** (-two_b_over_sig2)) * ndtr(-e1 + shift) - np.exp(b * T) * ndtr(-e1)
     value = (
         -S * np.exp(-q * T) * ndtr(-e1)
         + M * np.exp(-r * T) * ndtr(-e2)
@@ -458,8 +481,13 @@ def _fixed_put(
 
 
 def _fixed_put_zero_drift(
-    S: float, M: float, T: float, r: float, sigma: float,
-    e1: float, e2: float,
+    S: float,
+    M: float,
+    T: float,
+    r: float,
+    sigma: float,
+    e1: float,
+    e2: float,
 ) -> float:
     """
     L'Hopital limit of the fixed-strike lookback put as ``r -> q``.
@@ -537,21 +565,15 @@ class LookbackOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         st = strike_type.strip().lower()
         if st not in ("floating", "fixed"):
-            raise ValueError(
-                f"strike_type must be 'floating' or 'fixed', got '{strike_type}'"
-            )
+            raise ValueError(f"strike_type must be 'floating' or 'fixed', got '{strike_type}'")
 
         if st == "fixed":
             if K is None:
-                raise ValueError(
-                    "K is required when strike_type='fixed'"
-                )
+                raise ValueError("K is required when strike_type='fixed'")
             if K <= 0:
                 raise ValueError(f"K must be > 0, got {K}")
 
@@ -678,15 +700,11 @@ class LookbackOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         st = strike_type.strip().lower()
         if st not in ("floating", "fixed"):
-            raise ValueError(
-                f"strike_type must be 'floating' or 'fixed', got '{strike_type}'"
-            )
+            raise ValueError(f"strike_type must be 'floating' or 'fixed', got '{strike_type}'")
 
         if S_min is None:
             S_min = S
@@ -694,9 +712,7 @@ class LookbackOption(ExoticOption):
             S_max = S
 
         if S_min <= 0 or S_max <= 0:
-            raise ValueError(
-                f"S_min and S_max must be > 0, got S_min={S_min}, S_max={S_max}"
-            )
+            raise ValueError(f"S_min and S_max must be > 0, got S_min={S_min}, S_max={S_max}")
 
         if st == "floating":
             if opt == "call":

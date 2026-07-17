@@ -134,14 +134,12 @@ class TestValidation:
         with pytest.raises(ValueError):
             m.price(100, 100, 0.0, 0.05)
         with pytest.raises(ValueError):
-            m.price(100, 100, 1.0, 0.05, option_type='straddle')
+            m.price(100, 100, 1.0, 0.05, option_type="straddle")
 
     def test_option_type_normalization(self):
         m = make_canonical(mc_paths=2_000, mc_steps=8)
-        assert m.price(100, 100, 1.0, 0.05, 'C') == \
-               m.price(100, 100, 1.0, 0.05, 'call')
-        assert m.price(100, 100, 1.0, 0.05, ' Put ') == \
-               m.price(100, 100, 1.0, 0.05, 'put')
+        assert m.price(100, 100, 1.0, 0.05, "C") == m.price(100, 100, 1.0, 0.05, "call")
+        assert m.price(100, 100, 1.0, 0.05, " Put ") == m.price(100, 100, 1.0, 0.05, "put")
 
     def test_simulate_validation(self):
         m = make_canonical(mc_paths=100, mc_steps=4)
@@ -156,7 +154,7 @@ class TestValidation:
         with pytest.raises(ValueError):
             m.simulate(100, 1.0, 0.05, n_steps=0)
         with pytest.raises(ValueError):
-            m.simulate(100, 1.0, 0.05, method='euler')
+            m.simulate(100, 1.0, 0.05, method="euler")
 
     def test_repr_eq_hash_use_model_parameters_only(self):
         # D1: two instances with different MC resolution are the SAME model
@@ -182,20 +180,19 @@ class TestVolterraCovariance:
     def test_diagonal_exact(self, H, t):
         """E[V_t^2] = 2H int_0^t (t-u)^(2H-1) du = t^(2H), exact."""
         m = make_canonical(H=H)
-        assert m._volterra_covariance(t, t) == pytest.approx(
-            t ** (2 * H), abs=1e-10)
+        assert m._volterra_covariance(t, t) == pytest.approx(t ** (2 * H), abs=1e-10)
 
     @pytest.mark.parametrize("s,t", [(0.3, 0.7), (0.5, 0.5), (1.0, 0.25)])
     def test_H_half_is_brownian(self, s, t):
         """H = 1/2: kernel identically 1 -> E[V_s V_t] = min(s, t)."""
         m = make_canonical(H=0.5)
-        assert m._volterra_covariance(s, t) == pytest.approx(
-            min(s, t), abs=1e-10)
+        assert m._volterra_covariance(s, t) == pytest.approx(min(s, t), abs=1e-10)
 
     def test_symmetry(self):
         m = make_canonical()
         assert m._volterra_covariance(0.3, 0.9) == pytest.approx(
-            m._volterra_covariance(0.9, 0.3), abs=1e-14)
+            m._volterra_covariance(0.9, 0.3), abs=1e-14
+        )
 
     def test_zero_time(self):
         """V_0 = 0 a.s. -> zero covariance with anything."""
@@ -224,8 +221,7 @@ class TestCholeskyMoments:
     def draws(self):
         m = make_canonical()
         rng = np.random.default_rng(123)
-        V, dB = m._simulate_volterra_cholesky(self.T, self.N_STEPS,
-                                              self.N_PATHS, rng)
+        V, dB = m._simulate_volterra_cholesky(self.T, self.N_STEPS, self.N_PATHS, rng)
         return m, V, dB.cumsum(axis=1)  # (model, V, B)
 
     def test_volterra_variance(self, draws):
@@ -248,7 +244,7 @@ class TestCholeskyMoments:
     def test_zero_means(self, draws):
         m, V, B = draws
         t = self.T / self.N_STEPS * np.arange(1, self.N_STEPS + 1)
-        se_v = t ** m.H / np.sqrt(self.N_PATHS)
+        se_v = t**m.H / np.sqrt(self.N_PATHS)
         se_b = np.sqrt(t / self.N_PATHS)
         assert np.all(np.abs(V.mean(axis=0)) < 3 * se_v)
         assert np.all(np.abs(B.mean(axis=0)) < 3 * se_b)
@@ -259,11 +255,12 @@ class TestCholeskyMoments:
         m, V, B = draws
         t = self.T / self.N_STEPS * np.arange(1, self.N_STEPS + 1)
         Hp = m.H + 0.5
-        for i in [0, 3, 7]:      # t index
+        for i in [0, 3, 7]:  # t index
             for j in [0, 3, 7]:  # s index
                 prod = V[:, i] * B[:, j]
                 exact = (np.sqrt(2 * m.H) / Hp) * (
-                    t[i] ** Hp - max(t[i] - min(t[i], t[j]), 0.0) ** Hp)
+                    t[i] ** Hp - max(t[i] - min(t[i], t[j]), 0.0) ** Hp
+                )
                 se = prod.std(ddof=1) / np.sqrt(self.N_PATHS)
                 assert abs(prod.mean() - exact) < 3 * se, (i, j)
 
@@ -286,8 +283,7 @@ def _hybrid_theoretical_variance(H: float, T: float, n: int) -> np.ndarray:
     k = np.arange(2, n + 1, dtype=np.float64)
     b = ((k ** (gamma + 1) - (k - 1) ** (gamma + 1)) / (gamma + 1)) ** (1 / gamma)
     G = (b * dt) ** gamma
-    return 2 * H * (dt ** (2 * H) / (2 * H)
-                    + np.concatenate(([0.0], np.cumsum(G * G * dt))))
+    return 2 * H * (dt ** (2 * H) / (2 * H) + np.concatenate(([0.0], np.cumsum(G * G * dt))))
 
 
 class TestHybridScheme:
@@ -301,8 +297,7 @@ class TestHybridScheme:
         catches wrong kernel weights, missing dt in G_k, missing sqrt(2H)."""
         m = make_canonical(H=H)
         rng = np.random.default_rng(7)
-        V, _ = m._simulate_volterra_hybrid(self.T, self.N_STEPS,
-                                           self.N_PATHS, rng)
+        V, _ = m._simulate_volterra_hybrid(self.T, self.N_STEPS, self.N_PATHS, rng)
         theo = _hybrid_theoretical_variance(H, self.T, self.N_STEPS)
         sample = V.var(axis=0, ddof=1)
         se = np.sqrt(2.0 / self.N_PATHS) * theo
@@ -322,8 +317,7 @@ class TestHybridScheme:
         """V_{t_1} is the bare W1 term — exact: Var = dt^(2H)."""
         m = make_canonical()
         rng = np.random.default_rng(11)
-        V, _ = m._simulate_volterra_hybrid(self.T, self.N_STEPS,
-                                           self.N_PATHS, rng)
+        V, _ = m._simulate_volterra_hybrid(self.T, self.N_STEPS, self.N_PATHS, rng)
         dt = self.T / self.N_STEPS
         exact = dt ** (2 * m.H)
         se = np.sqrt(2.0 / self.N_PATHS) * exact
@@ -383,19 +377,34 @@ class TestHybridVsCholesky:
         m = make_canonical(H=H)
         for K in [80.0, 90.0, 100.0, 110.0, 120.0]:
             p_h, se_h = m.price_european_conditional(
-                S0, K, 1.0, 0.0, n_paths=self.N_PATHS, n_steps=self.N_STEPS,
-                method='hybrid', seed=101)
+                S0,
+                K,
+                1.0,
+                0.0,
+                n_paths=self.N_PATHS,
+                n_steps=self.N_STEPS,
+                method="hybrid",
+                seed=101,
+            )
             p_c, se_c = m.price_european_conditional(
-                S0, K, 1.0, 0.0, n_paths=self.N_PATHS, n_steps=self.N_STEPS,
-                method='cholesky', seed=202)
+                S0,
+                K,
+                1.0,
+                0.0,
+                n_paths=self.N_PATHS,
+                n_steps=self.N_STEPS,
+                method="cholesky",
+                seed=202,
+            )
             z = (p_h - p_c) / np.hypot(se_h, se_c)
             assert abs(z) < 3.0, f"K={K}: hybrid={p_h:.4f} chol={p_c:.4f} z={z:.2f}"
 
     def test_martingale_cholesky(self):
         """The exact method must satisfy the exact left-point martingale."""
         m = make_canonical()
-        paths = m.simulate(S0, 1.0, 0.03, 0.01, n_paths=100_000, n_steps=32,
-                           method='cholesky', seed=31)
+        paths = m.simulate(
+            S0, 1.0, 0.03, 0.01, n_paths=100_000, n_steps=32, method="cholesky", seed=31
+        )
         disc = np.exp(-(0.03 - 0.01) * 1.0) * paths[:, -1]
         se = disc.std(ddof=1) / np.sqrt(len(disc))
         assert abs(disc.mean() - S0) < 3 * se
@@ -411,8 +420,7 @@ class TestVarianceProcess:
         """E[v_t] = xi0 for every t (exact lognormal mean correction) —
         catches a missing sqrt(2H) or a missing -eta^2/2 t^(2H)."""
         m = make_canonical(seed=3)
-        _, v = m.simulate(S0, 1.0, 0.0, n_paths=200_000, n_steps=64,
-                          return_variance=True)
+        _, v = m.simulate(S0, 1.0, 0.0, n_paths=200_000, n_steps=64, return_variance=True)
         for i in [1, 16, 32, 64]:
             col = v[:, i]
             se = col.std(ddof=1) / np.sqrt(len(col))
@@ -422,20 +430,18 @@ class TestVarianceProcess:
         """E[v_t^2] = xi0^2 exp(eta^2 t^(2H)). Tested at eta = 1.0 to keep
         the kurtosis of v^2 (hence the SE of its sample mean) sane."""
         m = make_canonical(eta=1.0, seed=5)
-        _, v = m.simulate(S0, 1.0, 0.0, n_paths=400_000, n_steps=16,
-                          return_variance=True)
+        _, v = m.simulate(S0, 1.0, 0.0, n_paths=400_000, n_steps=16, return_variance=True)
         t_grid = np.arange(1, 17) / 16.0
         for i in [4, 8, 16]:
             sq = v[:, i] ** 2
-            exact = m.xi0 ** 2 * np.exp(m.eta ** 2 * t_grid[i - 1] ** (2 * m.H))
+            exact = m.xi0**2 * np.exp(m.eta**2 * t_grid[i - 1] ** (2 * m.H))
             se = sq.std(ddof=1) / np.sqrt(len(sq))
             assert abs(sq.mean() - exact) < 3 * se, f"step {i}"
 
     def test_variance_strictly_positive(self):
         """v > 0 by construction (exponential) — no absorption branches."""
         m = make_canonical(seed=7)
-        _, v = m.simulate(S0, 1.0, 0.0, n_paths=50_000, n_steps=64,
-                          return_variance=True)
+        _, v = m.simulate(S0, 1.0, 0.0, n_paths=50_000, n_steps=64, return_variance=True)
         assert np.all(v > 0)
         assert np.all(v[:, 0] == m.xi0)
 
@@ -457,8 +463,7 @@ class TestMartingale:
     @pytest.mark.parametrize("n_steps,n_paths", [(50, 200_000), (500, 50_000)])
     def test_martingale(self, n_steps, n_paths):
         m = make_canonical(seed=7)
-        paths = m.simulate(S0, 1.0, 0.03, 0.01, n_paths=n_paths,
-                           n_steps=n_steps)
+        paths = m.simulate(S0, 1.0, 0.03, 0.01, n_paths=n_paths, n_steps=n_steps)
         disc = np.exp(-(0.03 - 0.01) * 1.0) * paths[:, -1]
         se = disc.std(ddof=1) / np.sqrt(len(disc))
         assert abs(disc.mean() - S0) < 3 * se
@@ -499,44 +504,46 @@ class TestBlackScholesLimit:
     BS = BlackScholesModel(0.2)
 
     def make_limit(self, rho=0.0):
-        return RoughBergomiModel(xi0=0.04, eta=1e-8, H=0.1, rho=rho,
-                                 mc_paths=50_000, mc_steps=64)
+        return RoughBergomiModel(xi0=0.04, eta=1e-8, H=0.1, rho=rho, mc_paths=50_000, mc_steps=64)
 
     @pytest.mark.parametrize("K", [80.0, 100.0, 120.0])
-    @pytest.mark.parametrize("opt", ['call', 'put'])
+    @pytest.mark.parametrize("opt", ["call", "put"])
     def test_price_deterministic_at_rho_zero(self, K, opt):
         m = self.make_limit()
         p, se = m.price_european_conditional(S0, K, 1.0, 0.05, opt, 0.01)
-        assert p == pytest.approx(self.BS.price(S0, K, 1.0, 0.05, opt, 0.01),
-                                  abs=1e-8)
+        assert p == pytest.approx(self.BS.price(S0, K, 1.0, 0.05, opt, 0.01), abs=1e-8)
         assert se < 1e-8
 
     def test_price_with_correlation_matches_bs(self):
         """rho = -0.9, eta ~ 0: mixture over lognormal S_cond still
         integrates to the BS price."""
         m = self.make_limit(rho=-0.9)
-        p, se = m.price_european_conditional(S0, 100.0, 1.0, 0.05,
-                                             n_paths=200_000, n_steps=64)
+        p, se = m.price_european_conditional(S0, 100.0, 1.0, 0.05, n_paths=200_000, n_steps=64)
         assert abs(p - self.BS.price(S0, 100.0, 1.0, 0.05)) < 3 * max(se, 1e-12)
 
     def test_plain_mc_matches_bs(self):
         m = self.make_limit(rho=-0.9)
         res = m.price_mc(S0, 100.0, 1.0, 0.05, n_paths=200_000, n_steps=64)
-        assert abs(res.price - self.BS.price(S0, 100.0, 1.0, 0.05)) \
-            < 3 * res.std_error
+        assert abs(res.price - self.BS.price(S0, 100.0, 1.0, 0.05)) < 3 * res.std_error
 
-    @pytest.mark.parametrize("greek,rtol", [
-        ('delta', 1e-4), ('gamma', 1e-4), ('vega', 1e-5),
-        ('theta', 1e-3), ('rho', 1e-5),
-    ])
+    @pytest.mark.parametrize(
+        "greek,rtol",
+        [
+            ("delta", 1e-4),
+            ("gamma", 1e-4),
+            ("vega", 1e-5),
+            ("theta", 1e-3),
+            ("rho", 1e-5),
+        ],
+    )
     def test_greeks_collapse_to_bs(self, greek, rtol):
         """All ABC Greeks vs Phase 1 closed forms (measured relative errors
         ~1e-6 to 9e-6; tolerances cover the FD truncation). Note vega:
         dV/d(sqrt(xi0)) IS the entire BS vega here, because xi0 is the
         whole (flat) forward-variance curve."""
         m = self.make_limit()
-        got = getattr(m, greek)(S0, 100.0, 1.0, 0.05, 'call', 0.01)
-        want = getattr(self.BS, greek)(S0, 100.0, 1.0, 0.05, 'call', 0.01)
+        got = getattr(m, greek)(S0, 100.0, 1.0, 0.05, "call", 0.01)
+        want = getattr(self.BS, greek)(S0, 100.0, 1.0, 0.05, "call", 0.01)
         assert got == pytest.approx(want, rel=rtol)
 
 
@@ -550,9 +557,9 @@ class TestConditionalEstimator:
         """Same discretization, independent draws: |z| < 3."""
         m = make_canonical()
         p_c, se_c = m.price_european_conditional(
-            S0, 100.0, 1.0, 0.0, n_paths=100_000, n_steps=100, seed=5)
-        res = m.price_mc(S0, 100.0, 1.0, 0.0, n_paths=100_000, n_steps=100,
-                         seed=9)
+            S0, 100.0, 1.0, 0.0, n_paths=100_000, n_steps=100, seed=5
+        )
+        res = m.price_mc(S0, 100.0, 1.0, 0.0, n_paths=100_000, n_steps=100, seed=9)
         z = (p_c - res.price) / np.hypot(se_c, res.std_error)
         assert abs(z) < 3.0
 
@@ -560,12 +567,13 @@ class TestConditionalEstimator:
         """price_mc put branch with antithetic pairing vs the conditional
         put on an independent seed."""
         m = make_canonical()
-        res = m.price_mc(S0, 110.0, 1.0, 0.02, 'put', 0.01,
-                         n_paths=50_000, n_steps=64, antithetic=True, seed=13)
+        res = m.price_mc(
+            S0, 110.0, 1.0, 0.02, "put", 0.01, n_paths=50_000, n_steps=64, antithetic=True, seed=13
+        )
         p_c, se_c = m.price_european_conditional(
-            S0, 110.0, 1.0, 0.02, 'put', 0.01,
-            n_paths=100_000, n_steps=64, seed=21)
-        assert res.variance_reduction == 'antithetic'
+            S0, 110.0, 1.0, 0.02, "put", 0.01, n_paths=100_000, n_steps=64, seed=21
+        )
+        assert res.variance_reduction == "antithetic"
         z = (res.price - p_c) / np.hypot(res.std_error, se_c)
         assert abs(z) < 3.0
 
@@ -578,9 +586,9 @@ class TestConditionalEstimator:
         control variate on S_cond provides the rest — see _control_adjust."""
         m = make_canonical()
         _, se_c = m.price_european_conditional(
-            S0, K, 1.0, 0.0, n_paths=100_000, n_steps=100, seed=5)
-        res = m.price_mc(S0, K, 1.0, 0.0, n_paths=100_000, n_steps=100,
-                         seed=9)
+            S0, K, 1.0, 0.0, n_paths=100_000, n_steps=100, seed=5
+        )
+        res = m.price_mc(S0, K, 1.0, 0.0, n_paths=100_000, n_steps=100, seed=9)
         assert se_c / res.std_error < max_ratio
 
     def test_put_call_parity_exact(self):
@@ -588,8 +596,8 @@ class TestConditionalEstimator:
         parity per path; the control variate preserves it because the
         optimal beta is identical for call and put values)."""
         m = make_canonical(mc_paths=20_000, mc_steps=32)
-        c = m.price(S0, 110.0, 0.75, 0.04, 'call', 0.02)
-        p = m.price(S0, 110.0, 0.75, 0.04, 'put', 0.02)
+        c = m.price(S0, 110.0, 0.75, 0.04, "call", 0.02)
+        p = m.price(S0, 110.0, 0.75, 0.04, "put", 0.02)
         parity = S0 * np.exp(-0.02 * 0.75) - 110.0 * np.exp(-0.04 * 0.75)
         assert c - p == pytest.approx(parity, abs=1e-10)
 
@@ -600,15 +608,16 @@ class TestConditionalEstimator:
         across strikes, hence control_variate=False here."""
         m = make_canonical(mc_paths=20_000, mc_steps=32)
         strikes = [70.0, 85.0, 100.0, 115.0, 130.0]
-        prices = [m.price_european_conditional(S0, K, 1.0, 0.03,
-                                               control_variate=False)[0]
-                  for K in strikes]
+        prices = [
+            m.price_european_conditional(S0, K, 1.0, 0.03, control_variate=False)[0]
+            for K in strikes
+        ]
         assert np.all(np.diff(prices) < 0)
 
     def test_no_arbitrage_bounds(self):
         m = make_canonical(mc_paths=50_000, mc_steps=64)
         for K in [60.0, 100.0, 140.0]:
-            p, se = m.price_european_conditional(S0, K, 1.0, 0.03, 'call', 0.01)
+            p, se = m.price_european_conditional(S0, K, 1.0, 0.03, "call", 0.01)
             lb = max(S0 * np.exp(-0.01) - K * np.exp(-0.03), 0.0)
             ub = S0 * np.exp(-0.01)
             assert lb - 4 * se <= p <= ub + 4 * se
@@ -616,10 +625,10 @@ class TestConditionalEstimator:
     def test_zero_strike(self):
         """K = 0: call = prepaid forward (deterministic), put worthless."""
         m = make_canonical(mc_paths=2_000, mc_steps=8)
-        p, se = m.price_european_conditional(S0, 0.0, 2.0, 0.05, 'call', 0.03)
+        p, se = m.price_european_conditional(S0, 0.0, 2.0, 0.05, "call", 0.03)
         assert p == pytest.approx(S0 * np.exp(-0.03 * 2.0), abs=1e-12)
         assert se == 0.0
-        assert m.price(S0, 0.0, 2.0, 0.05, 'put', 0.03) == 0.0
+        assert m.price(S0, 0.0, 2.0, 0.05, "put", 0.03) == 0.0
 
     def test_price_deterministic_given_instance(self):
         m = make_canonical(mc_paths=10_000, mc_steps=16)
@@ -658,8 +667,8 @@ class TestGreeks:
     Q = 0.02
 
     def test_delta_bounds_and_parity(self, model):
-        d_call = model.delta(*self.ARGS, 'call', self.Q)
-        d_put = model.delta(*self.ARGS, 'put', self.Q)
+        d_call = model.delta(*self.ARGS, "call", self.Q)
+        d_put = model.delta(*self.ARGS, "put", self.Q)
         disc_q = np.exp(-self.Q * 1.0)
         assert 0.0 < d_call < disc_q
         # Parity is exact on shared draws: put = call - e^{-qT}
@@ -670,61 +679,63 @@ class TestGreeks:
         variate's in-sample beta is computed on shifted (put) values, so
         the agreement is to rounding noise amplified by 1/h^2 (~1e-11),
         not to machine epsilon."""
-        g_call = model.gamma(*self.ARGS, 'call', self.Q)
-        g_put = model.gamma(*self.ARGS, 'put', self.Q)
+        g_call = model.gamma(*self.ARGS, "call", self.Q)
+        g_put = model.gamma(*self.ARGS, "put", self.Q)
         assert g_call > 0
         assert g_call == pytest.approx(g_put, abs=1e-9)
 
     def test_vega_positive(self, model):
-        assert model.vega(*self.ARGS, 'call', self.Q) > 0
+        assert model.vega(*self.ARGS, "call", self.Q) > 0
 
     def test_theta_call_negative(self, model):
-        assert model.theta(*self.ARGS, 'call', self.Q) < 0
+        assert model.theta(*self.ARGS, "call", self.Q) < 0
 
     def test_rho_signs(self, model):
-        assert model.rho(*self.ARGS, 'call', self.Q) > 0
-        assert model.rho(*self.ARGS, 'put', self.Q) < 0
+        assert model.rho(*self.ARGS, "call", self.Q) > 0
+        assert model.rho(*self.ARGS, "put", self.Q) < 0
 
     def test_delta_stable_in_bump_size(self, model):
         """The conditional price is smooth in S: an independent FD of
         price() with a 5x coarser bump must agree closely (same draws)."""
-        d_api = model.delta(*self.ARGS, 'call', self.Q)
+        d_api = model.delta(*self.ARGS, "call", self.Q)
         h = 5e-3 * S0
-        d_fd = (model.price(S0 + h, 100.0, 1.0, 0.05, 'call', self.Q)
-                - model.price(S0 - h, 100.0, 1.0, 0.05, 'call', self.Q)) / (2 * h)
+        d_fd = (
+            model.price(S0 + h, 100.0, 1.0, 0.05, "call", self.Q)
+            - model.price(S0 - h, 100.0, 1.0, 0.05, "call", self.Q)
+        ) / (2 * h)
         assert d_api == pytest.approx(d_fd, abs=2e-4)
 
     def test_greeks_dict_matches_individual_methods(self, model):
         """Same seed -> deterministic -> the dict must reproduce the
         individual methods exactly."""
-        g = model.greeks(*self.ARGS, 'call', self.Q)
-        assert g['price'] == model.price(*self.ARGS, 'call', self.Q)
-        assert g['delta'] == model.delta(*self.ARGS, 'call', self.Q)
-        assert g['gamma'] == model.gamma(*self.ARGS, 'call', self.Q)
-        assert g['vega'] == model.vega(*self.ARGS, 'call', self.Q)
-        assert g['theta'] == model.theta(*self.ARGS, 'call', self.Q)
-        assert g['rho'] == model.rho(*self.ARGS, 'call', self.Q)
+        g = model.greeks(*self.ARGS, "call", self.Q)
+        assert g["price"] == model.price(*self.ARGS, "call", self.Q)
+        assert g["delta"] == model.delta(*self.ARGS, "call", self.Q)
+        assert g["gamma"] == model.gamma(*self.ARGS, "call", self.Q)
+        assert g["vega"] == model.vega(*self.ARGS, "call", self.Q)
+        assert g["theta"] == model.theta(*self.ARGS, "call", self.Q)
+        assert g["rho"] == model.rho(*self.ARGS, "call", self.Q)
 
     def test_zero_strike_greeks(self, model):
         """K = 0 closed forms: the prepaid forward S e^{-qT}."""
         disc_q = np.exp(-self.Q * 1.0)
-        assert model.delta(S0, 0.0, 1.0, 0.05, 'call', self.Q) == \
-            pytest.approx(disc_q, abs=1e-12)
-        assert model.gamma(S0, 0.0, 1.0, 0.05, 'call', self.Q) == 0.0
-        assert model.vega(S0, 0.0, 1.0, 0.05, 'call', self.Q) == 0.0
-        assert model.rho(S0, 0.0, 1.0, 0.05, 'call', self.Q) == 0.0
-        assert model.theta(S0, 0.0, 1.0, 0.05, 'call', self.Q) == \
-            pytest.approx(self.Q * S0 * disc_q, rel=1e-6)
-        assert model.delta(S0, 0.0, 1.0, 0.05, 'put', self.Q) == 0.0
-        assert model.theta(S0, 0.0, 1.0, 0.05, 'put', self.Q) == 0.0
+        assert model.delta(S0, 0.0, 1.0, 0.05, "call", self.Q) == pytest.approx(disc_q, abs=1e-12)
+        assert model.gamma(S0, 0.0, 1.0, 0.05, "call", self.Q) == 0.0
+        assert model.vega(S0, 0.0, 1.0, 0.05, "call", self.Q) == 0.0
+        assert model.rho(S0, 0.0, 1.0, 0.05, "call", self.Q) == 0.0
+        assert model.theta(S0, 0.0, 1.0, 0.05, "call", self.Q) == pytest.approx(
+            self.Q * S0 * disc_q, rel=1e-6
+        )
+        assert model.delta(S0, 0.0, 1.0, 0.05, "put", self.Q) == 0.0
+        assert model.theta(S0, 0.0, 1.0, 0.05, "put", self.Q) == 0.0
 
     def test_zero_strike_greeks_dict(self):
         """greeks() at K = 0 (cheap model): the deterministic branch of
         every kernel, including the dict's own price kernel."""
         m = make_canonical(mc_paths=1_000, mc_steps=8)
-        g = m.greeks(S0, 0.0, 1.0, 0.05, 'call', self.Q)
-        assert g['price'] == pytest.approx(S0 * np.exp(-self.Q), abs=1e-12)
-        assert g['gamma'] == 0.0 and g['vega'] == 0.0 and g['rho'] == 0.0
+        g = m.greeks(S0, 0.0, 1.0, 0.05, "call", self.Q)
+        assert g["price"] == pytest.approx(S0 * np.exp(-self.Q), abs=1e-12)
+        assert g["gamma"] == 0.0 and g["vega"] == 0.0 and g["rho"] == 0.0
 
 
 # ──────────────────────────────────────────────
@@ -753,25 +764,21 @@ class TestModelGreeks:
             dn = model._bumped(**{name: value - h}).price(*self.ARGS)
             return (up - dn) / (2 * h)
 
-        assert mg['xi0'] == pytest.approx(
-            brute('xi0', model.xi0, 1e-3 * model.xi0), rel=1e-8)
-        assert mg['eta'] == pytest.approx(
-            brute('eta', model.eta, 1e-3 * model.eta), rel=1e-8)
+        assert mg["xi0"] == pytest.approx(brute("xi0", model.xi0, 1e-3 * model.xi0), rel=1e-8)
+        assert mg["eta"] == pytest.approx(brute("eta", model.eta, 1e-3 * model.eta), rel=1e-8)
         h_H = min(1e-3 * model.H, 0.5 * (0.5 - model.H))
-        assert mg['H'] == pytest.approx(brute('H', model.H, h_H), rel=1e-8)
-        h_rho = min(1e-3 * max(abs(model.rho_sv), 0.1),
-                    0.5 * (1.0 - abs(model.rho_sv)))
-        assert mg['rho'] == pytest.approx(
-            brute('rho', model.rho_sv, h_rho), rel=1e-8)
+        assert mg["H"] == pytest.approx(brute("H", model.H, h_H), rel=1e-8)
+        h_rho = min(1e-3 * max(abs(model.rho_sv), 0.1), 0.5 * (1.0 - abs(model.rho_sv)))
+        assert mg["rho"] == pytest.approx(brute("rho", model.rho_sv, h_rho), rel=1e-8)
 
     def test_vega_chain_rule(self, model):
         """vega = dV/d(sqrt(xi0)) = dV/dxi0 * 2 sqrt(xi0)."""
         vega = model.vega(*self.ARGS)
-        dxi0 = model.model_greeks(*self.ARGS)['xi0']
+        dxi0 = model.model_greeks(*self.ARGS)["xi0"]
         assert vega == pytest.approx(dxi0 * 2 * np.sqrt(model.xi0), rel=1e-3)
 
     def test_xi0_sensitivity_positive(self, model):
-        assert model.model_greeks(*self.ARGS)['xi0'] > 0
+        assert model.model_greeks(*self.ARGS)["xi0"] > 0
 
     def test_zero_strike_all_zero(self, model):
         mg = model.model_greeks(S0, 0.0, 1.0, 0.05)
@@ -783,8 +790,8 @@ class TestModelGreeks:
         m = make_canonical(H=0.5, mc_paths=10_000, mc_steps=32)
         mg = m.model_greeks(S0, 100.0, 1.0, 0.05)
         assert all(np.isfinite(v) for v in mg.values())
-        assert mg['xi0'] > 0
-        assert m.model_greeks(S0, 0.0, 1.0, 0.05)['H'] == 0.0
+        assert mg["xi0"] > 0
+        assert m.model_greeks(S0, 0.0, 1.0, 0.05)["H"] == 0.0
 
 
 # ──────────────────────────────────────────────
@@ -797,8 +804,8 @@ def _atm_skew_heston(model: HestonModel, T: float, k_off: float) -> float:
     ivs = []
     for k in (-k_off, k_off):
         K = S0 * np.exp(k)
-        p = model.price(S0, K, T, 0.0, 'call')
-        ivs.append(BlackScholesModel.implied_vol(p, S0, K, T, 0.0, 'call'))
+        p = model.price(S0, K, T, 0.0, "call")
+        ivs.append(BlackScholesModel.implied_vol(p, S0, K, T, 0.0, "call"))
     return (ivs[1] - ivs[0]) / (2 * k_off)
 
 
@@ -872,10 +879,8 @@ class TestSkewPowerLaw:
         do not show."""
         _, psi_short_rb = rb_skews
         heston = make_heston_spx()
-        psi_h_short = np.array([_atm_skew_heston(heston, T, self.K_OFF)
-                                for T in self.MATS_SHORT])
-        psi_h_long = np.array([_atm_skew_heston(heston, T, self.K_OFF)
-                               for T in self.MATS_MAIN[2:]])
+        psi_h_short = np.array([_atm_skew_heston(heston, T, self.K_OFF) for T in self.MATS_SHORT])
+        psi_h_long = np.array([_atm_skew_heston(heston, T, self.K_OFF) for T in self.MATS_MAIN[2:]])
         assert np.all(psi_h_short < 0)
         slope_h_short = self._slope(self.MATS_SHORT, psi_h_short)
         slope_h_long = self._slope(self.MATS_MAIN[2:], psi_h_long)
@@ -899,10 +904,8 @@ class TestExoticsUnderRoughBergomi:
     @pytest.fixture(scope="class")
     def setup(self):
         model = make_canonical()
-        engine = MonteCarloEngine(n_paths=self.N_PATHS, n_steps=self.N_STEPS,
-                                  seed=17)
-        paths = model.simulate(S0, 1.0, 0.0, n_paths=self.N_PATHS,
-                               n_steps=self.N_STEPS, seed=17)
+        engine = MonteCarloEngine(n_paths=self.N_PATHS, n_steps=self.N_STEPS, seed=17)
+        paths = model.simulate(S0, 1.0, 0.0, n_paths=self.N_PATHS, n_steps=self.N_STEPS, seed=17)
         return model, engine, paths
 
     def test_asian_differs_from_gbm(self, setup):
@@ -910,37 +913,33 @@ class TestExoticsUnderRoughBergomi:
         (sqrt(xi0) = 0.20): the rough smile must move the Asian put by
         many standard errors (measured z ~ -21)."""
         _, engine, paths = setup
-        asian = AsianOption(K=100.0, option_type='put')
+        asian = AsianOption(K=100.0, option_type="put")
         res_rb = engine.price(asian.payoff, paths, 0.0, 1.0)
         paths_gbm = engine.simulate_gbm(S0, 1.0, 0.0, 0.20)
         res_gbm = engine.price(asian.payoff, paths_gbm, 0.0, 1.0)
-        z = (res_rb.price - res_gbm.price) / np.hypot(res_rb.std_error,
-                                                      res_gbm.std_error)
+        z = (res_rb.price - res_gbm.price) / np.hypot(res_rb.std_error, res_gbm.std_error)
         assert abs(z) > 5.0
 
     def test_barrier_dominance_and_in_out_parity(self, setup):
         """Pathwise: knock-out <= vanilla; down-out + down-in = vanilla
         exactly on the same paths."""
         _, engine, paths = setup
-        do = BarrierOption(K=100.0, barrier=85.0, barrier_type='down-and-out')
-        di = BarrierOption(K=100.0, barrier=85.0, barrier_type='down-and-in')
+        do = BarrierOption(K=100.0, barrier=85.0, barrier_type="down-and-out")
+        di = BarrierOption(K=100.0, barrier=85.0, barrier_type="down-and-in")
         res_do = engine.price(do.payoff, paths, 0.0, 1.0)
         res_di = engine.price(di.payoff, paths, 0.0, 1.0)
-        vanilla = engine.price(lambda p: np.maximum(p[:, -1] - 100.0, 0.0),
-                               paths, 0.0, 1.0)
+        vanilla = engine.price(lambda p: np.maximum(p[:, -1] - 100.0, 0.0), paths, 0.0, 1.0)
         assert res_do.price <= vanilla.price
-        assert res_do.price + res_di.price == pytest.approx(vanilla.price,
-                                                            abs=1e-9)
+        assert res_do.price + res_di.price == pytest.approx(vanilla.price, abs=1e-9)
 
     def test_vanilla_on_paths_matches_conditional(self, setup):
         """Plain payoff on the simulated paths vs the conditional
         estimator on an independent seed: |z| < 3."""
         model, engine, paths = setup
-        res = engine.price(lambda p: np.maximum(p[:, -1] - 100.0, 0.0),
-                           paths, 0.0, 1.0)
+        res = engine.price(lambda p: np.maximum(p[:, -1] - 100.0, 0.0), paths, 0.0, 1.0)
         p_c, se_c = model.price_european_conditional(
-            S0, 100.0, 1.0, 0.0, n_paths=self.N_PATHS,
-            n_steps=self.N_STEPS, seed=5)
+            S0, 100.0, 1.0, 0.0, n_paths=self.N_PATHS, n_steps=self.N_STEPS, seed=5
+        )
         z = (res.price - p_c) / np.hypot(res.std_error, se_c)
         assert abs(z) < 3.0
 
@@ -954,8 +953,8 @@ class TestSimulate:
     def test_shapes_and_initial_values(self):
         m = make_canonical(seed=1)
         (paths, anti), (v, v_anti) = m.simulate(
-            S0, 1.0, 0.05, n_paths=1_000, n_steps=32,
-            antithetic=True, return_variance=True)
+            S0, 1.0, 0.05, n_paths=1_000, n_steps=32, antithetic=True, return_variance=True
+        )
         for arr in (paths, anti, v, v_anti):
             assert arr.shape == (1_000, 33)
         assert np.all(paths[:, 0] == S0) and np.all(anti[:, 0] == S0)
@@ -980,20 +979,19 @@ class TestSimulate:
         v * v_anti = xi0^2 exp(-eta^2 t^(2H)) EXACTLY, path by path —
         the sharpest possible check that antithetic negates every draw."""
         m = make_canonical(seed=3)
-        (_, _), (v, v_anti) = m.simulate(S0, 1.0, 0.05, n_paths=200,
-                                         n_steps=16, antithetic=True,
-                                         return_variance=True)
+        (_, _), (v, v_anti) = m.simulate(
+            S0, 1.0, 0.05, n_paths=200, n_steps=16, antithetic=True, return_variance=True
+        )
         t = np.arange(1, 17) / 16.0
-        expected = m.xi0 ** 2 * np.exp(-m.eta ** 2 * t ** (2 * m.H))
+        expected = m.xi0**2 * np.exp(-(m.eta**2) * t ** (2 * m.H))
         np.testing.assert_allclose(
-            v[:, 1:] * v_anti[:, 1:],
-            np.broadcast_to(expected, (v.shape[0], 16)), rtol=1e-12)
+            v[:, 1:] * v_anti[:, 1:], np.broadcast_to(expected, (v.shape[0], 16)), rtol=1e-12
+        )
 
     def test_antithetic_reduces_standard_error(self):
         m = make_canonical(seed=5)
         engine = MonteCarloEngine(n_paths=50_000, n_steps=50)
-        paths, anti = m.simulate(S0, 1.0, 0.05, n_paths=50_000, n_steps=50,
-                                 antithetic=True, seed=5)
+        paths, anti = m.simulate(S0, 1.0, 0.05, n_paths=50_000, n_steps=50, antithetic=True, seed=5)
 
         def payoff(p):
             return np.maximum(p[:, -1] - 100.0, 0.0)
@@ -1005,9 +1003,8 @@ class TestSimulate:
     def test_single_step_mesh(self):
         """n_steps = 1: hybrid has no convolution term, Cholesky is 2x2."""
         m = make_canonical()
-        for method in ('hybrid', 'cholesky'):
-            paths = m.simulate(S0, 1.0, 0.05, n_paths=100, n_steps=1,
-                               method=method, seed=1)
+        for method in ("hybrid", "cholesky"):
+            paths = m.simulate(S0, 1.0, 0.05, n_paths=100, n_steps=1, method=method, seed=1)
             assert paths.shape == (100, 2)
             assert np.all(paths > 0)
 
@@ -1040,8 +1037,8 @@ class TestIVSurface:
         m = make_canonical(mc_paths=30_000, mc_steps=64)
         K, T = 90.0, 0.5  # K < forward -> surface uses the put
         iv_surf = m.iv_surface(S0, [K], [T], 0.03)[0, 0]
-        p_call, _ = m.price_european_conditional(S0, K, T, 0.03, 'call')
-        iv_call = BlackScholesModel.implied_vol(p_call, S0, K, T, 0.03, 'call')
+        p_call, _ = m.price_european_conditional(S0, K, T, 0.03, "call")
+        iv_call = BlackScholesModel.implied_vol(p_call, S0, K, T, 0.03, "call")
         assert iv_surf == pytest.approx(iv_call, abs=5e-7)
 
 
@@ -1062,13 +1059,11 @@ class TestHurstRoundtrip:
         measured H_hat = 0.098 for H = 0.1.
         """
         m = make_canonical(seed=3)
-        _, v = m.simulate(S0, 1.0, 0.0, n_paths=50_000, n_steps=512,
-                          return_variance=True)
+        _, v = m.simulate(S0, 1.0, 0.0, n_paths=50_000, n_steps=512, return_variance=True)
         log_v = np.log(v[:, 256:])
         dt = 1.0 / 512
         lags = np.array([1, 2, 4, 8, 16])
-        moments = [np.mean((log_v[:, lag:] - log_v[:, :-lag]) ** 2)
-                   for lag in lags]
+        moments = [np.mean((log_v[:, lag:] - log_v[:, :-lag]) ** 2) for lag in lags]
         H_hat = 0.5 * np.polyfit(np.log(lags * dt), np.log(moments), 1)[0]
         assert abs(H_hat - m.H) < 0.05
 
@@ -1086,29 +1081,32 @@ MODEL_STRATEGY = dict(
 
 
 class TestHypothesisProperties:
-    @given(T=st.floats(0.1, 1.5), r=st.floats(-0.02, 0.08),
-           q=st.floats(0.0, 0.04), **MODEL_STRATEGY)
+    @given(
+        T=st.floats(0.1, 1.5), r=st.floats(-0.02, 0.08), q=st.floats(0.0, 0.04), **MODEL_STRATEGY
+    )
     @settings(max_examples=50, deadline=None)
     def test_martingale_and_positivity(self, xi0, eta, H, rho, T, r, q):
         m = RoughBergomiModel(xi0=xi0, eta=eta, H=H, rho=rho, seed=42)
-        paths, v = m.simulate(S0, T, r, q, n_paths=20_000, n_steps=32,
-                              return_variance=True)
+        paths, v = m.simulate(S0, T, r, q, n_paths=20_000, n_steps=32, return_variance=True)
         assert np.all(paths > 0) and np.all(v > 0)
         assert np.all(np.isfinite(paths))
         disc = np.exp(-(r - q) * T) * paths[:, -1]
         se = disc.std(ddof=1) / np.sqrt(len(disc))
         assert abs(disc.mean() - S0) < 4 * se
 
-    @given(moneyness=st.floats(0.7, 1.3), T=st.floats(0.1, 1.5),
-           r=st.floats(-0.02, 0.08), q=st.floats(0.0, 0.04),
-           **MODEL_STRATEGY)
+    @given(
+        moneyness=st.floats(0.7, 1.3),
+        T=st.floats(0.1, 1.5),
+        r=st.floats(-0.02, 0.08),
+        q=st.floats(0.0, 0.04),
+        **MODEL_STRATEGY,
+    )
     @settings(max_examples=50, deadline=None)
     def test_parity_and_bounds(self, xi0, eta, H, rho, moneyness, T, r, q):
-        m = RoughBergomiModel(xi0=xi0, eta=eta, H=H, rho=rho,
-                              mc_paths=20_000, mc_steps=32, seed=42)
+        m = RoughBergomiModel(xi0=xi0, eta=eta, H=H, rho=rho, mc_paths=20_000, mc_steps=32, seed=42)
         K = S0 * moneyness
-        c, se = m.price_european_conditional(S0, K, T, r, 'call', q)
-        p, _ = m.price_european_conditional(S0, K, T, r, 'put', q)
+        c, se = m.price_european_conditional(S0, K, T, r, "call", q)
+        p, _ = m.price_european_conditional(S0, K, T, r, "put", q)
         parity = S0 * np.exp(-q * T) - K * np.exp(-r * T)
         assert c - p == pytest.approx(parity, abs=1e-9)
         lb = max(parity, 0.0)
@@ -1122,11 +1120,11 @@ class TestHypothesisProperties:
     @settings(max_examples=25, deadline=None)
     def test_call_monotone_decreasing_in_strike(self, xi0, eta, H, rho, T):
         """Exact (not statistical): shared draws, no control variate."""
-        m = RoughBergomiModel(xi0=xi0, eta=eta, H=H, rho=rho,
-                              mc_paths=20_000, mc_steps=32, seed=42)
-        prices = [m.price_european_conditional(S0, K, T, 0.02,
-                                               control_variate=False)[0]
-                  for K in (80.0, 100.0, 120.0)]
+        m = RoughBergomiModel(xi0=xi0, eta=eta, H=H, rho=rho, mc_paths=20_000, mc_steps=32, seed=42)
+        prices = [
+            m.price_european_conditional(S0, K, T, 0.02, control_variate=False)[0]
+            for K in (80.0, 100.0, 120.0)
+        ]
         assert prices[0] > prices[1] > prices[2]
 
 
@@ -1141,8 +1139,7 @@ class TestPerformance:
         convolution batched over paths). Generous CI bound."""
         m = make_canonical()
         start = time.perf_counter()
-        paths = m.simulate(S0, 1.0, 0.05, n_paths=200_000, n_steps=256,
-                           seed=1)
+        paths = m.simulate(S0, 1.0, 0.05, n_paths=200_000, n_steps=256, seed=1)
         elapsed = time.perf_counter() - start
         assert paths.shape == (200_000, 257)
         assert elapsed < 15.0, f"hybrid simulation took {elapsed:.1f}s"

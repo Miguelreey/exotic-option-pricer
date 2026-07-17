@@ -185,26 +185,24 @@ def _reiner_rubinstein_components(
     HS_2lam = (H / S) ** (2.0 * lam)
     HS_2lam_m2 = (H / S) ** (2.0 * lam - 2.0)
 
-    A = (
-        phi * S * np.exp(-q * T) * ndtr(phi * x1)
-        - phi * K * np.exp(-r * T) * ndtr(phi * (x1 - sqrt_T))
+    A = phi * S * np.exp(-q * T) * ndtr(phi * x1) - phi * K * np.exp(-r * T) * ndtr(
+        phi * (x1 - sqrt_T)
     )
-    B = (
-        phi * S * np.exp(-q * T) * ndtr(phi * x2)
-        - phi * K * np.exp(-r * T) * ndtr(phi * (x2 - sqrt_T))
+    B = phi * S * np.exp(-q * T) * ndtr(phi * x2) - phi * K * np.exp(-r * T) * ndtr(
+        phi * (x2 - sqrt_T)
     )
-    C = (
-        phi * S * np.exp(-q * T) * HS_2lam * ndtr(eta * y1)
-        - phi * K * np.exp(-r * T) * HS_2lam_m2 * ndtr(eta * (y1 - sqrt_T))
-    )
-    D = (
-        phi * S * np.exp(-q * T) * HS_2lam * ndtr(eta * y2)
-        - phi * K * np.exp(-r * T) * HS_2lam_m2 * ndtr(eta * (y2 - sqrt_T))
-    )
+    C = phi * S * np.exp(-q * T) * HS_2lam * ndtr(eta * y1) - phi * K * np.exp(
+        -r * T
+    ) * HS_2lam_m2 * ndtr(eta * (y1 - sqrt_T))
+    D = phi * S * np.exp(-q * T) * HS_2lam * ndtr(eta * y2) - phi * K * np.exp(
+        -r * T
+    ) * HS_2lam_m2 * ndtr(eta * (y2 - sqrt_T))
 
     if rebate != 0.0:
-        E = rebate * np.exp(-r * T) * (
-            ndtr(eta * (x2 - sqrt_T)) - HS_2lam_m2 * ndtr(eta * (y2 - sqrt_T))
+        E = (
+            rebate
+            * np.exp(-r * T)
+            * (ndtr(eta * (x2 - sqrt_T)) - HS_2lam_m2 * ndtr(eta * (y2 - sqrt_T)))
         )
         a = lam - 1.0
         b = np.sqrt(a * a + 2.0 * r / sigma2)
@@ -275,8 +273,7 @@ class BarrierOption(ExoticOption):
         bt = barrier_type.strip().lower()
         if bt not in _VALID_BARRIER_TYPES:
             raise ValueError(
-                f"barrier_type must be one of {sorted(_VALID_BARRIER_TYPES)}, "
-                f"got '{barrier_type}'"
+                f"barrier_type must be one of {sorted(_VALID_BARRIER_TYPES)}, got '{barrier_type}'"
             )
 
         opt = option_type.strip().lower()
@@ -285,9 +282,7 @@ class BarrierOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         if rebate < 0:
             raise ValueError(f"rebate must be >= 0, got {rebate}")
@@ -426,8 +421,7 @@ class BarrierOption(ExoticOption):
         bt = barrier_type.strip().lower()
         if bt not in _VALID_BARRIER_TYPES:
             raise ValueError(
-                f"barrier_type must be one of {sorted(_VALID_BARRIER_TYPES)}, "
-                f"got '{barrier_type}'"
+                f"barrier_type must be one of {sorted(_VALID_BARRIER_TYPES)}, got '{barrier_type}'"
             )
 
         opt = option_type.strip().lower()
@@ -436,9 +430,7 @@ class BarrierOption(ExoticOption):
         elif opt == "p":
             opt = "put"
         if opt not in ("call", "put"):
-            raise ValueError(
-                f"option_type must be 'call' or 'put', got '{option_type}'"
-            )
+            raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
         H = float(barrier)
         is_down = bt.startswith("down")
@@ -459,27 +451,36 @@ class BarrierOption(ExoticOption):
         eta = 1.0 if is_down else -1.0
 
         A, B, C, D, E, F = _reiner_rubinstein_components(
-            S, K, T, r, sigma, H, phi, eta, q, rebate,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            phi,
+            eta,
+            q,
+            rebate,
         )
 
         # Lookup table (Haug 2007, Table 4-11): select component combination
         if is_in:
-            if is_down and opt == "call":        # down-and-in call
+            if is_down and opt == "call":  # down-and-in call
                 value = (C + E) if H <= K else (A - B + D + E)
             elif not is_down and opt == "call":  # up-and-in call
                 value = (A + E) if H <= K else (B - C + D + E)
-            elif is_down and opt == "put":       # down-and-in put
+            elif is_down and opt == "put":  # down-and-in put
                 value = (B - C + D + E) if H <= K else (A + E)
-            else:                                # up-and-in put
+            else:  # up-and-in put
                 value = (A - B + D + E) if H <= K else (C + E)
         else:  # knock-out
-            if is_down and opt == "call":        # down-and-out call
+            if is_down and opt == "call":  # down-and-out call
                 value = (A - C + F) if H <= K else (B - D + F)
             elif not is_down and opt == "call":  # up-and-out call
                 value = F if H <= K else (A - B + C - D + F)
-            elif is_down and opt == "put":       # down-and-out put
+            elif is_down and opt == "put":  # down-and-out put
                 value = (A - B + C - D + F) if H <= K else F
-            else:                                # up-and-out put
+            else:  # up-and-out put
                 value = (B - D + F) if H <= K else (A - C + F)
 
         return float(value)
@@ -565,15 +566,17 @@ class BarrierOption(ExoticOption):
         )
 
     def __hash__(self) -> int:
-        return hash(
-            (self.K, self.barrier, self._barrier_type,
-             self._option_type, self.rebate)
-        )
+        return hash((self.K, self.barrier, self._barrier_type, self._option_type, self.rebate))
 
 
 def _vanilla_bs(
-    S: float, K: float, T: float, r: float, sigma: float,
-    option_type: str, q: float,
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    option_type: str,
+    q: float,
 ) -> float:
     """
     Black-Scholes-Merton price for a vanilla European call or put.
@@ -586,9 +589,5 @@ def _vanilla_bs(
     d1 = (np.log(S / K) + (r - q + 0.5 * sigma * sigma) * T) / (sigma * sqrt_T)
     d2 = d1 - sigma * sqrt_T
     if option_type == "call":
-        return float(
-            S * np.exp(-q * T) * ndtr(d1) - K * np.exp(-r * T) * ndtr(d2)
-        )
-    return float(
-        K * np.exp(-r * T) * ndtr(-d2) - S * np.exp(-q * T) * ndtr(-d1)
-    )
+        return float(S * np.exp(-q * T) * ndtr(d1) - K * np.exp(-r * T) * ndtr(d2))
+    return float(K * np.exp(-r * T) * ndtr(-d2) - S * np.exp(-q * T) * ndtr(-d1))

@@ -115,7 +115,12 @@ def _select_expiries(
 
 
 def _implied_dividend_yield(
-    calls, puts, S0: float, T: float, r: float, fallback: float,
+    calls,
+    puts,
+    S0: float,
+    T: float,
+    r: float,
+    fallback: float,
 ) -> float:
     """
     Back out q from put-call parity at the most liquid near-ATM pair:
@@ -205,12 +210,15 @@ def fetch_option_quotes(
     all_q: list[np.ndarray] = []
     n_raw = 0
 
-    expiries = _select_expiries(list(asset.options), today, maturity_band,
-                                max_expiries)
+    expiries = _select_expiries(list(asset.options), today, maturity_band, max_expiries)
     for expiry_str, T in expiries:
         chain = asset.option_chain(expiry_str)
         q_T = _implied_dividend_yield(
-            chain.calls, chain.puts, S0, T, risk_free_rate,
+            chain.calls,
+            chain.puts,
+            S0,
+            T,
+            risk_free_rate,
             fallback=dividend_yield,
         )
 
@@ -220,15 +228,23 @@ def fetch_option_quotes(
             bids = frame["bid"].to_numpy(dtype=np.float64)
             asks = frame["ask"].to_numpy(dtype=np.float64)
             volumes = np.nan_to_num(
-                frame["volume"].to_numpy(dtype=np.float64), nan=0.0,
+                frame["volume"].to_numpy(dtype=np.float64),
+                nan=0.0,
             )
             n_raw += strikes.shape[0]
 
             otm = strikes < S0 if option_type == "put" else strikes >= S0
             keep = otm & filter_option_quotes(
-                strikes, np.full_like(strikes, T), bids, asks, volumes, S0,
-                max_rel_spread=max_rel_spread, min_volume=min_volume,
-                moneyness_band=moneyness_band, maturity_band=maturity_band,
+                strikes,
+                np.full_like(strikes, T),
+                bids,
+                asks,
+                volumes,
+                S0,
+                max_rel_spread=max_rel_spread,
+                min_volume=min_volume,
+                moneyness_band=moneyness_band,
+                maturity_band=maturity_band,
             )
 
             mids = 0.5 * (bids[keep] + asks[keep])
@@ -237,8 +253,13 @@ def fetch_option_quotes(
             for i, (K, mid) in enumerate(zip(kept_strikes, mids)):
                 try:
                     ivs[i] = BlackScholesModel.implied_vol(
-                        float(mid), S0, float(K), T, risk_free_rate,
-                        option_type, q=q_T,
+                        float(mid),
+                        S0,
+                        float(K),
+                        T,
+                        risk_free_rate,
+                        option_type,
+                        q=q_T,
                     )
                 except ValueError:
                     continue  # mid violates no-arbitrage bounds: drop quote

@@ -296,9 +296,7 @@ class MonteCarloEngine:
             drift_coeff = (r - q) * dt
             diff_coeff = sigma * sqrt_dt
             for step in range(n_steps):
-                paths[:, step + 1] = paths[:, step] * (
-                    1.0 + drift_coeff + diff_coeff * Z[:, step]
-                )
+                paths[:, step + 1] = paths[:, step] * (1.0 + drift_coeff + diff_coeff * Z[:, step])
                 if absorb:
                     np.maximum(paths[:, step + 1], 0.0, out=paths[:, step + 1])
 
@@ -478,7 +476,7 @@ class MonteCarloEngine:
             # Sobol properties, then trimmed to the requested count.
             sampler = _Sobol(d=n_steps_actual, scramble=True, seed=self.seed)
             m = int(np.ceil(np.log2(max(self.n_paths, 2))))
-            uniforms = sampler.random(2**m)[:self.n_paths]
+            uniforms = sampler.random(2**m)[: self.n_paths]
             # Inverse CDF: uniform -> normal. Clip to avoid inf at boundaries.
             Z = _norm_dist.ppf(np.clip(uniforms, 1e-10, 1 - 1e-10))
         else:
@@ -487,15 +485,36 @@ class MonteCarloEngine:
         if antithetic:
             Z_anti = -Z  # new array — unaffected by in-place ops on Z
             paths_pos = self._build_paths_from_normals(
-                S0, T, r, sigma, q, scheme, Z, absorb=absorb,
+                S0,
+                T,
+                r,
+                sigma,
+                q,
+                scheme,
+                Z,
+                absorb=absorb,
             )
             paths_neg = self._build_paths_from_normals(
-                S0, T, r, sigma, q, scheme, Z_anti, absorb=absorb,
+                S0,
+                T,
+                r,
+                sigma,
+                q,
+                scheme,
+                Z_anti,
+                absorb=absorb,
             )
             return paths_pos, paths_neg
 
         return self._build_paths_from_normals(
-            S0, T, r, sigma, q, scheme, Z, absorb=absorb,
+            S0,
+            T,
+            r,
+            sigma,
+            q,
+            scheme,
+            Z,
+            absorb=absorb,
         )
 
     # ──────────────────────────────────────────────
@@ -768,16 +787,13 @@ class MonteCarloEngine:
             Z = self._rng.standard_normal(self.n_paths)
 
             v_next = np.empty(self.n_paths)
-            K0_arr: np.ndarray | None = (
-                np.full(self.n_paths, K0) if martingale_correction else None
-            )
+            K0_arr: np.ndarray | None = np.full(self.n_paths, K0) if martingale_correction else None
             quad_mask = psi <= psi_c
 
             if np.any(quad_mask):
                 # psi <= psi_c <= 2 guarantees 2/psi - 1 >= 0
                 two_over_psi = 2.0 / psi[quad_mask]
-                b2 = (two_over_psi - 1.0
-                      + np.sqrt(two_over_psi) * np.sqrt(two_over_psi - 1.0))
+                b2 = two_over_psi - 1.0 + np.sqrt(two_over_psi) * np.sqrt(two_over_psi - 1.0)
                 a = m[quad_mask] / (1.0 + b2)
                 v_next[quad_mask] = a * (np.sqrt(b2) + Z_v[quad_mask]) ** 2
                 if K0_arr is not None:
@@ -786,9 +802,11 @@ class MonteCarloEngine:
                     two_A_a = 2.0 * A * a
                     safe = two_A_a < 1.0 - 1e-12
                     two_A_a_safe = np.where(safe, two_A_a, 0.0)
-                    k0_star = (-A * b2 * a / (1.0 - two_A_a_safe)
-                               + 0.5 * np.log1p(-two_A_a_safe)
-                               - K1_plus_half_K3 * v[quad_mask])
+                    k0_star = (
+                        -A * b2 * a / (1.0 - two_A_a_safe)
+                        + 0.5 * np.log1p(-two_A_a_safe)
+                        - K1_plus_half_K3 * v[quad_mask]
+                    )
                     K0_arr[quad_mask] = np.where(safe, k0_star, K0)
 
             exp_mask = ~quad_mask
@@ -799,21 +817,26 @@ class MonteCarloEngine:
                 beta = (1.0 - p) / m[exp_mask]
                 U = U_v[exp_mask]
                 v_next[exp_mask] = np.where(
-                    U <= p, 0.0, np.log((1.0 - p) / (1.0 - U)) / beta,
+                    U <= p,
+                    0.0,
+                    np.log((1.0 - p) / (1.0 - U)) / beta,
                 )
                 if K0_arr is not None:
                     # ln E[exp(A v_next)] = ln(p + beta(1 - p)/(beta - A)),
                     # valid for A < beta
                     safe = beta > A + 1e-12
                     denom = np.where(safe, beta - A, 1.0)
-                    k0_star = (-np.log(p + (1.0 - p) * beta / denom)
-                               - K1_plus_half_K3 * v[exp_mask])
+                    k0_star = -np.log(p + (1.0 - p) * beta / denom) - K1_plus_half_K3 * v[exp_mask]
                     K0_arr[exp_mask] = np.where(safe, k0_star, K0)
 
             # K3 v + K4 v_next >= 0 analytically; max guards rounding noise
-            log_S += (drift + (K0 if K0_arr is None else K0_arr) + K1 * v
-                      + K2 * v_next
-                      + np.sqrt(np.maximum(K3 * v + K4 * v_next, 0.0)) * Z)
+            log_S += (
+                drift
+                + (K0 if K0_arr is None else K0_arr)
+                + K1 * v
+                + K2 * v_next
+                + np.sqrt(np.maximum(K3 * v + K4 * v_next, 0.0)) * Z
+            )
             v = v_next
 
             paths[:, step + 1] = np.exp(log_S)
@@ -943,7 +966,9 @@ class MonteCarloEngine:
                 cv_expected = S0 * np.exp(-q * T)
                 control_vals = discount * S_T * lr
                 payoffs, _ = control_variate_adjust(
-                    payoffs, control_vals, cv_expected,
+                    payoffs,
+                    control_vals,
+                    cv_expected,
                 )
 
             vr_label = "importance" + ("+control" if control_variate else "")
@@ -951,9 +976,11 @@ class MonteCarloEngine:
 
         # --- Standard path ---
         if opt == "call":
+
             def payoff_fn(p: np.ndarray) -> np.ndarray:
                 return np.maximum(p[:, -1] - K, 0.0)
         else:
+
             def payoff_fn(p: np.ndarray) -> np.ndarray:
                 return np.maximum(K - p[:, -1], 0.0)
 
@@ -961,7 +988,13 @@ class MonteCarloEngine:
         paths_anti: np.ndarray | None = None
         if antithetic:
             paths, paths_anti = self.simulate_gbm(
-                S0, T, r, sigma, q=q, n_steps=1, antithetic=True,
+                S0,
+                T,
+                r,
+                sigma,
+                q=q,
+                n_steps=1,
+                antithetic=True,
             )
         else:
             paths = self.simulate_gbm(S0, T, r, sigma, q=q, n_steps=1)
@@ -975,8 +1008,12 @@ class MonteCarloEngine:
                 return discount * p[:, -1], cv_expected
 
             return self.price(
-                payoff_fn, paths, r, T,
-                paths_anti=paths_anti, control_fn=cv_fn,
+                payoff_fn,
+                paths,
+                r,
+                T,
+                paths_anti=paths_anti,
+                control_fn=cv_fn,
             )
 
         return self.price(payoff_fn, paths, r, T, paths_anti=paths_anti)
@@ -1043,8 +1080,7 @@ class MonteCarloEngine:
         raw_payoffs = payoff_fn(paths)
         if raw_payoffs.shape[0] != paths.shape[0]:
             raise ValueError(
-                f"payoff_fn returned {raw_payoffs.shape[0]} values for "
-                f"{paths.shape[0]} paths"
+                f"payoff_fn returned {raw_payoffs.shape[0]} values for {paths.shape[0]} paths"
             )
 
         discount = np.exp(-r * T)
@@ -1077,12 +1113,16 @@ class MonteCarloEngine:
                 control_vals_anti, _ = control_fn(paths_anti)
                 control_avg = 0.5 * (control_vals + control_vals_anti)
                 payoffs, _ = control_variate_adjust(
-                    payoffs, control_avg, control_exp,
+                    payoffs,
+                    control_avg,
+                    control_exp,
                 )
             else:
                 control_vals, control_exp = control_fn(paths)
                 payoffs, _ = control_variate_adjust(
-                    payoffs, control_vals, control_exp,
+                    payoffs,
+                    control_vals,
+                    control_exp,
                 )
 
         return _build_result(payoffs, paths.shape[0], vr_label)
@@ -1140,7 +1180,10 @@ class MonteCarloEngine:
         """
         return [
             self.price(
-                pf, paths, r, T,
+                pf,
+                paths,
+                r,
+                T,
                 paths_anti=paths_anti,
                 control_fn=control_fn,
             )
@@ -1214,8 +1257,15 @@ class MonteCarloEngine:
         for n in path_counts:
             engine = MonteCarloEngine(n_paths=n, n_steps=1, seed=base_seed)
             result = engine.price_european(
-                S0, K, T, r, sigma, option_type, q,
-                antithetic=antithetic, control_variate=control_variate,
+                S0,
+                K,
+                T,
+                r,
+                sigma,
+                option_type,
+                q,
+                antithetic=antithetic,
+                control_variate=control_variate,
             )
             prices.append(result.price)
             std_errors.append(result.std_error)
@@ -1238,6 +1288,5 @@ class MonteCarloEngine:
 
     def __repr__(self) -> str:
         return (
-            f"MonteCarloEngine(n_paths={self.n_paths:,}, "
-            f"n_steps={self.n_steps}, seed={self.seed})"
+            f"MonteCarloEngine(n_paths={self.n_paths:,}, n_steps={self.n_steps}, seed={self.seed})"
         )

@@ -72,15 +72,22 @@ class PricingModel(ABC):
     def _validate_option_type(option_type: str) -> str:
         """Normalize option_type to 'call'/'put'; raise on anything else."""
         n = option_type.strip().lower()
-        if n in ('call', 'c'):
-            return 'call'
-        elif n in ('put', 'p'):
-            return 'put'
+        if n in ("call", "c"):
+            return "call"
+        elif n in ("put", "p"):
+            return "put"
         raise ValueError(f"option_type must be 'call' or 'put', got '{option_type}'")
 
     @abstractmethod
-    def price(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def price(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """
         European option price.
 
@@ -107,38 +114,80 @@ class PricingModel(ABC):
         ...
 
     @abstractmethod
-    def delta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def delta(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """First derivative with respect to spot: dV/dS."""
         ...
 
     @abstractmethod
-    def gamma(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def gamma(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Second derivative with respect to spot: d²V/dS²."""
         ...
 
     @abstractmethod
-    def vega(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-             option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def vega(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Derivative with respect to volatility: dV/dσ."""
         ...
 
     @abstractmethod
-    def theta(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-              option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def theta(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Derivative with respect to calendar time: dV/dt (per year)."""
         ...
 
     @abstractmethod
-    def rho(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-            option_type: str = 'call', q: float = 0.0) -> Numeric:
+    def rho(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Numeric:
         """Derivative with respect to risk-free rate: dV/dr."""
         ...
 
     @abstractmethod
-    def greeks(self, S: Numeric, K: Numeric, T: Numeric, r: Numeric,
-               option_type: str = 'call', q: float = 0.0) -> Dict[str, Numeric]:
+    def greeks(
+        self,
+        S: Numeric,
+        K: Numeric,
+        T: Numeric,
+        r: Numeric,
+        option_type: str = "call",
+        q: float = 0.0,
+    ) -> Dict[str, Numeric]:
         """
         Compute all available Greeks in a single pass.
 

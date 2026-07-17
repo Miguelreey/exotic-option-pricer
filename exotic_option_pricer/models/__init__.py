@@ -9,4 +9,4 @@ from .black_scholes import BlackScholesModel
 from .heston import HestonModel
 from .rough_bergomi import RoughBergomiModel
 
-__all__ = ['PricingModel', 'BlackScholesModel', 'HestonModel', 'RoughBergomiModel']
+__all__ = ["PricingModel", "BlackScholesModel", "HestonModel", "RoughBergomiModel"]
