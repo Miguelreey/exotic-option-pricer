@@ -35,7 +35,7 @@ import warnings
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from src.calibration.heston_calibrator import (
@@ -1110,19 +1110,25 @@ market = st.fixed_dictionaries({
 class TestHestonProperties:
     @given(params=heston_params, mkt=market)
     @settings(max_examples=500, deadline=None)
+    # Pinned regression (found by Hypothesis 2026-07-17): low vol + short T
+    # makes the Gil-Pelaez integrand exhaust the subdivision limit; the
+    # ~4e-7 quadrature error pushed the raw call below intrinsic and the
+    # put floor at zero then broke parity. _price_scalar now projects the
+    # call onto the no-arbitrage band and derives the put from the
+    # projected value, so parity is exact by construction — the tolerance
+    # only absorbs float roundoff.
+    @example(
+        params={"v0": 0.005, "kappa": 1.0, "theta": 0.015625, "xi": 1.0,
+                "rho": -0.875},
+        mkt={"K": 50.0, "T": 0.0625, "r": 0.0, "q": 0.0},
+    )
     def test_put_call_parity_random(self, params, mkt):
-        # Tolerance 2e-7, not 1e-8: in extreme deep-ITM corners (e.g.
-        # K = S/2, vol 7%, T = 2 weeks) the true put is ~1e-22 and the
-        # absolute quadrature error of S*P1 - K*P2 (~(S+K) * epsabs) can
-        # make the computed put slightly negative; the floor at zero then
-        # breaks exact parity by that quadrature noise. Relative error
-        # stays below 1e-9 — the deterministic parity test keeps 1e-8.
         m = make_model(**params)
         c = m.price(S0, mkt["K"], mkt["T"], mkt["r"], 'call', q=mkt["q"])
         p = m.price(S0, mkt["K"], mkt["T"], mkt["r"], 'put', q=mkt["q"])
         rhs = (S0 * np.exp(-mkt["q"] * mkt["T"])
                - mkt["K"] * np.exp(-mkt["r"] * mkt["T"]))
-        assert abs((c - p) - rhs) < 2e-7
+        assert abs((c - p) - rhs) < 1e-8
 
     @given(params=heston_params, mkt=market)
     @settings(max_examples=300, deadline=None)
