@@ -70,6 +70,9 @@ Repository = "https://github.com/Miguelreey/exotic-option-pricer"
 where = ["."]
 include = ["exotic_option_pricer*"]
 
+[tool.setuptools.package-data]
+exotic_option_pricer = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
