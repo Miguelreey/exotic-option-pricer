@@ -23,11 +23,12 @@ Color conventions (consistent throughout):
     rho     = #795548 (brown)
 """
 
+# NOTE: this module deliberately does NOT call matplotlib.use(): a library
+# must not hijack the caller's backend (it would kill inline rendering in
+# notebooks). Headless environments (CI) fall back to Agg on their own; set
+# MPLBACKEND=Agg explicitly if needed.
+
 from __future__ import annotations
-
-import matplotlib
-
-matplotlib.use('Agg')  # Non-interactive backend: safe for servers and CI/CD
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
