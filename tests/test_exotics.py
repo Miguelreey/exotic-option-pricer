@@ -20,15 +20,15 @@ import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.engines.monte_carlo import MonteCarloEngine
-from src.instruments.asian import AsianOption
-from src.instruments.barrier import BarrierOption
-from src.instruments.base import ExoticOption
-from src.instruments.digital import DigitalOption
-from src.instruments.lookback import LookbackOption
-from src.models.black_scholes import BlackScholesModel
-from src.utils.greeks import (
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from exotic_option_pricer.engines.monte_carlo import MonteCarloEngine
+from exotic_option_pricer.instruments.asian import AsianOption
+from exotic_option_pricer.instruments.barrier import BarrierOption
+from exotic_option_pricer.instruments.base import ExoticOption
+from exotic_option_pricer.instruments.digital import DigitalOption
+from exotic_option_pricer.instruments.lookback import LookbackOption
+from exotic_option_pricer.models.black_scholes import BlackScholesModel
+from exotic_option_pricer.utils.greeks import (
     numerical_delta,
     numerical_gamma,
     numerical_greeks,
@@ -71,10 +71,18 @@ class TestDigitalAnalytical:
             price = e^{-0.05} * 1 * 0.55962 ≈ 0.53241
         """
         price = DigitalOption.analytical_price(
-            100, 100, 1.0, 0.05, 0.20, 'call', 'cash', 1.0,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "cash",
+            1.0,
         )
         # Manual: d1 = (0 + 0.07)/0.20 = 0.35, d2 = 0.35 - 0.20 = 0.15
         from scipy.special import ndtr
+
         d2 = 0.15
         expected = np.exp(-0.05) * ndtr(d2)
         assert abs(price - expected) < 1e-10
@@ -82,9 +90,17 @@ class TestDigitalAnalytical:
     def test_cash_put_atm(self):
         """Cash-or-nothing ATM put: e^{-rT} * Q * N(-d2)."""
         price = DigitalOption.analytical_price(
-            100, 100, 1.0, 0.05, 0.20, 'put', 'cash', 1.0,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "put",
+            "cash",
+            1.0,
         )
         from scipy.special import ndtr
+
         d2 = 0.15
         expected = np.exp(-0.05) * ndtr(-d2)
         assert abs(price - expected) < 1e-10
@@ -92,9 +108,16 @@ class TestDigitalAnalytical:
     def test_asset_call_atm(self):
         """Asset-or-nothing ATM call: S * e^{-qT} * N(d1)."""
         price = DigitalOption.analytical_price(
-            100, 100, 1.0, 0.05, 0.20, 'call', 'asset',
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "asset",
         )
         from scipy.special import ndtr
+
         d1 = 0.35
         expected = 100 * ndtr(d1)
         assert abs(price - expected) < 1e-10
@@ -102,9 +125,16 @@ class TestDigitalAnalytical:
     def test_asset_put_atm(self):
         """Asset-or-nothing ATM put: S * e^{-qT} * N(-d1)."""
         price = DigitalOption.analytical_price(
-            100, 100, 1.0, 0.05, 0.20, 'put', 'asset',
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "put",
+            "asset",
         )
         from scipy.special import ndtr
+
         d1 = 0.35
         expected = 100 * ndtr(-d1)
         assert abs(price - expected) < 1e-10
@@ -114,32 +144,56 @@ class TestDigitalAnalytical:
         # With q=0.03: d1 = [ln(1) + (0.05 - 0.03 + 0.02)·1] / 0.20 = 0.20
         #              d2 = 0.20 - 0.20 = 0.00
         price = DigitalOption.analytical_price(
-            100, 100, 1.0, 0.05, 0.20, 'call', 'cash', 1.0, q=0.03,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "cash",
+            1.0,
+            q=0.03,
         )
         from scipy.special import ndtr
+
         expected = np.exp(-0.05) * ndtr(0.0)  # N(0) = 0.5
         assert abs(price - expected) < 1e-10
 
     def test_asset_call_with_dividends(self):
         """Asset-or-nothing call with q > 0: S * e^{-qT} * N(d1)."""
         price = DigitalOption.analytical_price(
-            100, 100, 1.0, 0.05, 0.20, 'call', 'asset', q=0.03,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "asset",
+            q=0.03,
         )
         from scipy.special import ndtr
+
         d1 = 0.20  # with q=0.03
         expected = 100 * np.exp(-0.03) * ndtr(d1)
         assert abs(price - expected) < 1e-10
 
     def test_cash_amount_scaling(self):
         """Cash-or-nothing price scales linearly with Q."""
-        p1 = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, 'call', 'cash', 1.0)
-        p5 = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, 'call', 'cash', 5.0)
+        p1 = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, "call", "cash", 1.0)
+        p5 = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, "call", "cash", 5.0)
         assert abs(p5 - 5.0 * p1) < 1e-12
 
     def test_deep_itm_cash_call(self):
         """Deep ITM cash call: S >> K → N(d2) → 1 → price → e^{-rT} Q."""
         price = DigitalOption.analytical_price(
-            1000, 10, 1.0, 0.05, 0.20, 'call', 'cash', 1.0,
+            1000,
+            10,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "cash",
+            1.0,
         )
         expected = np.exp(-0.05) * 1.0  # N(d2) ≈ 1
         assert abs(price - expected) < 1e-6
@@ -147,7 +201,14 @@ class TestDigitalAnalytical:
     def test_deep_otm_cash_call(self):
         """Deep OTM cash call: S << K → N(d2) → 0 → price → 0."""
         price = DigitalOption.analytical_price(
-            10, 1000, 1.0, 0.05, 0.20, 'call', 'cash', 1.0,
+            10,
+            1000,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "cash",
+            1.0,
         )
         assert price < 1e-10
 
@@ -155,7 +216,14 @@ class TestDigitalAnalytical:
         """Deep ITM asset call: S >> K → N(d1) → 1 → price → S e^{-qT}."""
         S = 1000.0
         price = DigitalOption.analytical_price(
-            S, 10, 1.0, 0.05, 0.20, 'call', 'asset', q=0.02,
+            S,
+            10,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "asset",
+            q=0.02,
         )
         expected = S * np.exp(-0.02)
         assert abs(price - expected) < 0.01
@@ -169,55 +237,77 @@ class TestDigitalMC:
 
     def test_cash_call_mc_vs_analytical(self):
         """MC cash-or-nothing call converges to analytical price."""
-        dig = DigitalOption(K=HULL_K, option_type='call', payout_type='cash')
+        dig = DigitalOption(K=HULL_K, option_type="call", payout_type="cash")
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
         result = mc.price(dig.payoff, paths, HULL_R, HULL_T)
 
         analytical = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
         )
         assert abs(result.price - analytical) < 3 * result.std_error
 
     def test_cash_put_mc_vs_analytical(self):
         """MC cash-or-nothing put converges to analytical price."""
-        dig = DigitalOption(K=HULL_K, option_type='put', payout_type='cash')
+        dig = DigitalOption(K=HULL_K, option_type="put", payout_type="cash")
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
         result = mc.price(dig.payoff, paths, HULL_R, HULL_T)
 
         analytical = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', 'cash',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "put",
+            "cash",
         )
         assert abs(result.price - analytical) < 3 * result.std_error
 
     def test_asset_call_mc_vs_analytical(self):
         """MC asset-or-nothing call converges to analytical price."""
-        dig = DigitalOption(K=HULL_K, option_type='call', payout_type='asset')
+        dig = DigitalOption(K=HULL_K, option_type="call", payout_type="asset")
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
         result = mc.price(dig.payoff, paths, HULL_R, HULL_T)
 
         analytical = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'asset',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            "asset",
         )
         assert abs(result.price - analytical) < 3 * result.std_error
 
     def test_asset_put_mc_vs_analytical(self):
         """MC asset-or-nothing put converges to analytical price."""
-        dig = DigitalOption(K=HULL_K, option_type='put', payout_type='asset')
+        dig = DigitalOption(K=HULL_K, option_type="put", payout_type="asset")
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
         result = mc.price(dig.payoff, paths, HULL_R, HULL_T)
 
         analytical = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', 'asset',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "put",
+            "asset",
         )
         assert abs(result.price - analytical) < 3 * result.std_error
 
     def test_cash_call_with_antithetic(self):
         """Antithetic variates reduce SE for digital calls."""
-        dig = DigitalOption(K=HULL_K, option_type='call', payout_type='cash')
+        dig = DigitalOption(K=HULL_K, option_type="call", payout_type="cash")
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
 
         # Without antithetic
@@ -227,12 +317,21 @@ class TestDigitalMC:
         # With antithetic
         mc.reset()
         paths, paths_anti = mc.simulate_gbm(
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1, antithetic=True,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            n_steps=1,
+            antithetic=True,
         )
         result_av = mc.price(dig.payoff, paths, HULL_R, HULL_T, paths_anti=paths_anti)
 
         analytical = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
         )
         # Both should be close to analytical
         assert abs(result_av.price - analytical) < 3 * result_av.std_error
@@ -242,13 +341,17 @@ class TestDigitalMC:
 
     def test_cash_call_otm_mc(self):
         """OTM digital call: MC price is small but positive."""
-        dig = DigitalOption(K=130, option_type='call', payout_type='cash')
+        dig = DigitalOption(K=130, option_type="call", payout_type="cash")
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
         result = mc.price(dig.payoff, paths, HULL_R, HULL_T)
 
         analytical = DigitalOption.analytical_price(
-            HULL_S, 130, HULL_T, HULL_R, HULL_SIGMA,
+            HULL_S,
+            130,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
         )
         assert abs(result.price - analytical) < 3 * result.std_error
         assert result.price > 0
@@ -268,10 +371,24 @@ class TestDigitalProperties:
         (P(S_T = K) = 0 under continuous measure).
         """
         call = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'cash', 1.0,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            "cash",
+            1.0,
         )
         put = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', 'cash', 1.0,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "put",
+            "cash",
+            1.0,
         )
         expected = np.exp(-HULL_R * HULL_T) * 1.0
         assert abs(call + put - expected) < 1e-12
@@ -283,10 +400,22 @@ class TestDigitalProperties:
         Total asset payout = discounted forward.
         """
         call = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'asset',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            "asset",
         )
         put = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', 'asset',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "put",
+            "asset",
         )
         expected = HULL_S  # q=0 → e^{-qT} = 1
         assert abs(call + put - expected) < 1e-10
@@ -295,10 +424,24 @@ class TestDigitalProperties:
         """Asset-or-nothing call + put = S * e^{-qT} with q > 0."""
         q = 0.03
         call = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'asset', q=q,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            "asset",
+            q=q,
         )
         put = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', 'asset', q=q,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "put",
+            "asset",
+            q=q,
         )
         expected = HULL_S * np.exp(-q * HULL_T)
         assert abs(call + put - expected) < 1e-10
@@ -312,10 +455,23 @@ class TestDigitalProperties:
         IS e^{-rT} N(d2), so this identity is exact.
         """
         asset_call = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'asset',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            "asset",
         )
         cash_call = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'cash', 1.0,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "call",
+            "cash",
+            1.0,
         )
         vanilla = asset_call - HULL_K * cash_call
         assert abs(vanilla - HULL_CALL) < 1e-3
@@ -323,10 +479,23 @@ class TestDigitalProperties:
     def test_vanilla_decomposition_put(self):
         """Vanilla put = K * cash-or-nothing put - asset-or-nothing put."""
         asset_put = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', 'asset',
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "put",
+            "asset",
         )
         cash_put = DigitalOption.analytical_price(
-            HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, 'put', 'cash', 1.0,
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            "put",
+            "cash",
+            1.0,
         )
         vanilla = HULL_K * cash_put - asset_put
         assert abs(vanilla - HULL_PUT) < 1e-3
@@ -341,8 +510,8 @@ class TestDigitalProperties:
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
 
-        dig_asset = DigitalOption(K=HULL_K, option_type='call', payout_type='asset')
-        dig_cash = DigitalOption(K=HULL_K, option_type='call', payout_type='cash')
+        dig_asset = DigitalOption(K=HULL_K, option_type="call", payout_type="asset")
+        dig_cash = DigitalOption(K=HULL_K, option_type="call", payout_type="cash")
 
         r_asset = mc.price(dig_asset.payoff, paths, HULL_R, HULL_T)
         r_cash = mc.price(dig_cash.payoff, paths, HULL_R, HULL_T)
@@ -355,7 +524,7 @@ class TestDigitalProperties:
 
         # Decomposition should hold within combined SE
         decomp = r_asset.price - HULL_K * r_cash.price
-        combined_se = np.sqrt(r_asset.std_error**2 + (HULL_K * r_cash.std_error)**2)
+        combined_se = np.sqrt(r_asset.std_error**2 + (HULL_K * r_cash.std_error) ** 2)
         assert abs(decomp - r_vanilla.price) < 3 * combined_se
 
     def test_cash_complementarity_mc(self):
@@ -363,8 +532,8 @@ class TestDigitalProperties:
         mc = MonteCarloEngine(n_paths=MC_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(HULL_S, HULL_T, HULL_R, HULL_SIGMA, n_steps=1)
 
-        dig_call = DigitalOption(K=HULL_K, option_type='call', payout_type='cash')
-        dig_put = DigitalOption(K=HULL_K, option_type='put', payout_type='cash')
+        dig_call = DigitalOption(K=HULL_K, option_type="call", payout_type="cash")
+        dig_put = DigitalOption(K=HULL_K, option_type="put", payout_type="cash")
 
         r_call = mc.price(dig_call.payoff, paths, HULL_R, HULL_T)
         r_put = mc.price(dig_put.payoff, paths, HULL_R, HULL_T)
@@ -377,7 +546,14 @@ class TestDigitalProperties:
         """Cash-or-nothing call ≤ e^{-rT} Q (probability ≤ 1)."""
         for K in [50, 80, 100, 120, 150]:
             price = DigitalOption.analytical_price(
-                HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'cash', 1.0,
+                HULL_S,
+                K,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                "call",
+                "cash",
+                1.0,
             )
             assert price <= np.exp(-HULL_R * HULL_T) * 1.0 + 1e-12
 
@@ -386,7 +562,13 @@ class TestDigitalProperties:
         strikes = [60, 80, 100, 120, 140]
         prices = [
             DigitalOption.analytical_price(
-                HULL_S, K, HULL_T, HULL_R, HULL_SIGMA, 'call', 'cash',
+                HULL_S,
+                K,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                "call",
+                "cash",
             )
             for K in strikes
         ]
@@ -402,7 +584,7 @@ class TestDigitalEdgeCases:
 
     def test_payoff_deterministic_itm_call(self):
         """Deterministic path S_T > K → cash call pays Q."""
-        dig = DigitalOption(K=90, option_type='call', payout_type='cash', cash_amount=5.0)
+        dig = DigitalOption(K=90, option_type="call", payout_type="cash", cash_amount=5.0)
         # Single path: S_0=100, S_T=110
         paths = np.array([[100.0, 110.0]])
         payoff = dig.payoff(paths)
@@ -410,42 +592,42 @@ class TestDigitalEdgeCases:
 
     def test_payoff_deterministic_otm_call(self):
         """Deterministic path S_T < K → cash call pays 0."""
-        dig = DigitalOption(K=120, option_type='call', payout_type='cash', cash_amount=5.0)
+        dig = DigitalOption(K=120, option_type="call", payout_type="cash", cash_amount=5.0)
         paths = np.array([[100.0, 110.0]])
         payoff = dig.payoff(paths)
         assert payoff[0] == 0.0
 
     def test_payoff_deterministic_itm_put(self):
         """Deterministic path S_T < K → cash put pays Q."""
-        dig = DigitalOption(K=120, option_type='put', payout_type='cash', cash_amount=3.0)
+        dig = DigitalOption(K=120, option_type="put", payout_type="cash", cash_amount=3.0)
         paths = np.array([[100.0, 110.0]])
         payoff = dig.payoff(paths)
         assert payoff[0] == 3.0
 
     def test_payoff_at_strike_call(self):
         """S_T == K exactly → call pays 0 (strict inequality convention)."""
-        dig = DigitalOption(K=100, option_type='call', payout_type='cash')
+        dig = DigitalOption(K=100, option_type="call", payout_type="cash")
         paths = np.array([[100.0, 100.0]])
         payoff = dig.payoff(paths)
         assert payoff[0] == 0.0
 
     def test_payoff_at_strike_put(self):
         """S_T == K exactly → put pays 0 (strict inequality convention)."""
-        dig = DigitalOption(K=100, option_type='put', payout_type='cash')
+        dig = DigitalOption(K=100, option_type="put", payout_type="cash")
         paths = np.array([[100.0, 100.0]])
         payoff = dig.payoff(paths)
         assert payoff[0] == 0.0
 
     def test_asset_payoff_itm(self):
         """Asset-or-nothing call ITM: pays S_T, not Q."""
-        dig = DigitalOption(K=90, option_type='call', payout_type='asset')
+        dig = DigitalOption(K=90, option_type="call", payout_type="asset")
         paths = np.array([[100.0, 150.0]])
         payoff = dig.payoff(paths)
         assert payoff[0] == 150.0
 
     def test_asset_payoff_otm(self):
         """Asset-or-nothing call OTM: pays 0."""
-        dig = DigitalOption(K=200, option_type='call', payout_type='asset')
+        dig = DigitalOption(K=200, option_type="call", payout_type="asset")
         paths = np.array([[100.0, 150.0]])
         payoff = dig.payoff(paths)
         assert payoff[0] == 0.0
@@ -453,7 +635,14 @@ class TestDigitalEdgeCases:
     def test_cash_amount_zero(self):
         """Q=0: price is always 0 regardless of moneyness."""
         price = DigitalOption.analytical_price(
-            100, 100, 1.0, 0.05, 0.20, 'call', 'cash', 0.0,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "cash",
+            0.0,
         )
         assert price == 0.0
 
@@ -461,7 +650,14 @@ class TestDigitalEdgeCases:
         """Short T: ITM digital converges to e^{-rT} * Q."""
         # Very short T, very deep ITM
         price = DigitalOption.analytical_price(
-            100, 50, 0.001, 0.05, 0.20, 'call', 'cash', 1.0,
+            100,
+            50,
+            0.001,
+            0.05,
+            0.20,
+            "call",
+            "cash",
+            1.0,
         )
         expected = np.exp(-0.05 * 0.001)
         assert abs(price - expected) < 1e-4
@@ -469,14 +665,28 @@ class TestDigitalEdgeCases:
     def test_short_maturity_otm(self):
         """Short T, OTM: digital converges to 0."""
         price = DigitalOption.analytical_price(
-            100, 150, 0.001, 0.05, 0.20, 'call', 'cash', 1.0,
+            100,
+            150,
+            0.001,
+            0.05,
+            0.20,
+            "call",
+            "cash",
+            1.0,
         )
         assert price < 1e-4
 
     def test_low_vol_itm(self):
         """Low sigma, ITM: digital converges to e^{-rT} * Q."""
         price = DigitalOption.analytical_price(
-            100, 50, 1.0, 0.05, 0.01, 'call', 'cash', 1.0,
+            100,
+            50,
+            1.0,
+            0.05,
+            0.01,
+            "call",
+            "cash",
+            1.0,
         )
         expected = np.exp(-0.05)
         assert abs(price - expected) < 1e-4
@@ -484,7 +694,14 @@ class TestDigitalEdgeCases:
     def test_low_vol_otm(self):
         """Low sigma, OTM: digital converges to 0."""
         price = DigitalOption.analytical_price(
-            100, 150, 1.0, 0.05, 0.01, 'call', 'cash', 1.0,
+            100,
+            150,
+            1.0,
+            0.05,
+            0.01,
+            "call",
+            "cash",
+            1.0,
         )
         assert price < 1e-4
 
@@ -505,11 +722,11 @@ class TestDigitalValidation:
 
     def test_invalid_option_type(self):
         with pytest.raises(ValueError, match="option_type"):
-            DigitalOption(K=100, option_type='straddle')
+            DigitalOption(K=100, option_type="straddle")
 
     def test_invalid_payout_type(self):
         with pytest.raises(ValueError, match="payout_type"):
-            DigitalOption(K=100, payout_type='binary')
+            DigitalOption(K=100, payout_type="binary")
 
     def test_negative_cash_amount(self):
         with pytest.raises(ValueError, match="cash_amount"):
@@ -529,8 +746,8 @@ class TestDigitalValidation:
 
     def test_shorthand_option_type(self):
         """Accept 'c' and 'p' as shorthand."""
-        p_c = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, 'c', 'cash')
-        p_call = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, 'call', 'cash')
+        p_c = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, "c", "cash")
+        p_call = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, "call", "cash")
         assert p_c == p_call
 
 
@@ -541,7 +758,7 @@ class TestDigitalIdentity:
     """Object identity: repr, equality, hashing."""
 
     def test_repr_cash(self):
-        dig = DigitalOption(K=100, option_type='call', payout_type='cash', cash_amount=5.0)
+        dig = DigitalOption(K=100, option_type="call", payout_type="cash", cash_amount=5.0)
         r = repr(dig)
         assert "K=100" in r
         assert "call" in r
@@ -549,14 +766,14 @@ class TestDigitalIdentity:
         assert "Q=5.0" in r
 
     def test_repr_asset(self):
-        dig = DigitalOption(K=100, option_type='put', payout_type='asset')
+        dig = DigitalOption(K=100, option_type="put", payout_type="asset")
         r = repr(dig)
         assert "asset" in r
         assert "put" in r
 
     def test_eq(self):
-        a = DigitalOption(K=100, option_type='call', payout_type='cash', cash_amount=1.0)
-        b = DigitalOption(K=100, option_type='call', payout_type='cash', cash_amount=1.0)
+        a = DigitalOption(K=100, option_type="call", payout_type="cash", cash_amount=1.0)
+        b = DigitalOption(K=100, option_type="call", payout_type="cash", cash_amount=1.0)
         assert a == b
 
     def test_neq_different_strike(self):
@@ -565,13 +782,13 @@ class TestDigitalIdentity:
         assert a != b
 
     def test_neq_different_type(self):
-        a = DigitalOption(K=100, option_type='call')
-        b = DigitalOption(K=100, option_type='put')
+        a = DigitalOption(K=100, option_type="call")
+        b = DigitalOption(K=100, option_type="put")
         assert a != b
 
     def test_hash_consistency(self):
-        a = DigitalOption(K=100, option_type='call', payout_type='cash')
-        b = DigitalOption(K=100, option_type='call', payout_type='cash')
+        a = DigitalOption(K=100, option_type="call", payout_type="cash")
+        b = DigitalOption(K=100, option_type="call", payout_type="cash")
         assert hash(a) == hash(b)
         assert len({a, b}) == 1
 
@@ -598,66 +815,71 @@ class TestDigitalHypothesis:
 
     @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
-    def test_cash_complementarity(self, S: float, K: float, T: float,
-                                   r: float, sigma: float, q: float):
+    def test_cash_complementarity(
+        self, S: float, K: float, T: float, r: float, sigma: float, q: float
+    ):
         """Cash call + cash put = e^{-rT} for all valid params."""
-        call = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'cash', 1.0, q)
-        put = DigitalOption.analytical_price(S, K, T, r, sigma, 'put', 'cash', 1.0, q)
+        call = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "cash", 1.0, q)
+        put = DigitalOption.analytical_price(S, K, T, r, sigma, "put", "cash", 1.0, q)
         expected = np.exp(-r * T)
         assert abs(call + put - expected) < 1e-10
 
     @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
-    def test_asset_complementarity(self, S: float, K: float, T: float,
-                                    r: float, sigma: float, q: float):
+    def test_asset_complementarity(
+        self, S: float, K: float, T: float, r: float, sigma: float, q: float
+    ):
         """Asset call + asset put = S e^{-qT} for all valid params."""
-        call = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'asset', q=q)
-        put = DigitalOption.analytical_price(S, K, T, r, sigma, 'put', 'asset', q=q)
+        call = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "asset", q=q)
+        put = DigitalOption.analytical_price(S, K, T, r, sigma, "put", "asset", q=q)
         expected = S * np.exp(-q * T)
         assert abs(call + put - expected) < 1e-8
 
     @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
-    def test_cash_call_non_negative(self, S: float, K: float, T: float,
-                                     r: float, sigma: float, q: float):
+    def test_cash_call_non_negative(
+        self, S: float, K: float, T: float, r: float, sigma: float, q: float
+    ):
         """Cash-or-nothing call price is always non-negative."""
-        price = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'cash', 1.0, q)
+        price = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "cash", 1.0, q)
         assert price >= -1e-15
 
     @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
-    def test_cash_call_upper_bound(self, S: float, K: float, T: float,
-                                    r: float, sigma: float, q: float):
+    def test_cash_call_upper_bound(
+        self, S: float, K: float, T: float, r: float, sigma: float, q: float
+    ):
         """Cash-or-nothing call ≤ e^{-rT} (probability ≤ 1)."""
-        price = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'cash', 1.0, q)
+        price = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "cash", 1.0, q)
         assert price <= np.exp(-r * T) + 1e-12
 
     @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
-    def test_vanilla_decomposition(self, S: float, K: float, T: float,
-                                    r: float, sigma: float, q: float):
+    def test_vanilla_decomposition(
+        self, S: float, K: float, T: float, r: float, sigma: float, q: float
+    ):
         """
         Vanilla call = asset-or-nothing call - K * cash-or-nothing call.
 
         Cross-validate against BlackScholesModel.
         """
-        asset_call = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'asset', q=q)
-        cash_call = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'cash', 1.0, q)
+        asset_call = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "asset", q=q)
+        cash_call = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "cash", 1.0, q)
         digital_vanilla = asset_call - K * cash_call
 
         bs = BlackScholesModel(sigma=sigma)
-        bs_price = bs.price(S, K, T, r, 'call', q)
+        bs_price = bs.price(S, K, T, r, "call", q)
 
         assert abs(digital_vanilla - bs_price) < 1e-8
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, Q=cash_st)
+    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st, Q=cash_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
-    def test_cash_amount_linearity(self, S: float, K: float, T: float,
-                                    r: float, sigma: float, q: float, Q: float):
+    def test_cash_amount_linearity(
+        self, S: float, K: float, T: float, r: float, sigma: float, q: float, Q: float
+    ):
         """Cash-or-nothing price scales linearly with Q."""
-        p1 = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'cash', 1.0, q)
-        pQ = DigitalOption.analytical_price(S, K, T, r, sigma, 'call', 'cash', Q, q)
+        p1 = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "cash", 1.0, q)
+        pQ = DigitalOption.analytical_price(S, K, T, r, sigma, "call", "cash", Q, q)
         assert abs(pQ - Q * p1) < 1e-10 * Q
 
 
@@ -673,8 +895,14 @@ ASIAN_STEPS = 252
 
 
 def _kemna_vorst_reference(
-    S: float, K: float, T: float, r: float, sigma: float, n_obs: int,
-    option_type: str = 'call', q: float = 0.0,
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    n_obs: int,
+    option_type: str = "call",
+    q: float = 0.0,
 ) -> float:
     """
     Independent Kemna-Vorst implementation used as ground truth in tests.
@@ -684,6 +912,7 @@ def _kemna_vorst_reference(
     expected value.
     """
     from scipy.special import ndtr as _ndtr  # local import to keep test hermetic
+
     n = float(n_obs)
     sig_hat_sq = sigma * sigma * (n + 1.0) * (2.0 * n + 1.0) / (6.0 * n * n)
     sig_hat = np.sqrt(sig_hat_sq)
@@ -692,7 +921,7 @@ def _kemna_vorst_reference(
     d1 = (np.log(S / K) + (r_hat + 0.5 * sig_hat_sq) * T) / (sig_hat * sqrt_T)
     d2 = d1 - sig_hat * sqrt_T
     adj = np.exp((r_hat - r) * T)
-    if option_type == 'call':
+    if option_type == "call":
         return float(adj * (S * _ndtr(d1) - K * np.exp(-r_hat * T) * _ndtr(d2)))
     return float(adj * (K * np.exp(-r_hat * T) * _ndtr(-d2) - S * _ndtr(-d1)))
 
@@ -706,24 +935,43 @@ class TestAsianAnalytical:
     def test_geo_call_atm_reference(self):
         """Class geometric_price matches independent implementation."""
         price = AsianOption.geometric_price(
-            100, 100, 1.0, 0.05, 0.20, 252, 'call',
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            252,
+            "call",
         )
-        ref = _kemna_vorst_reference(100, 100, 1.0, 0.05, 0.20, 252, 'call')
+        ref = _kemna_vorst_reference(100, 100, 1.0, 0.05, 0.20, 252, "call")
         assert abs(price - ref) < 1e-12
 
     def test_geo_put_atm_reference(self):
         price = AsianOption.geometric_price(
-            100, 100, 1.0, 0.05, 0.20, 252, 'put',
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            252,
+            "put",
         )
-        ref = _kemna_vorst_reference(100, 100, 1.0, 0.05, 0.20, 252, 'put')
+        ref = _kemna_vorst_reference(100, 100, 1.0, 0.05, 0.20, 252, "put")
         assert abs(price - ref) < 1e-12
 
     def test_geo_call_with_dividends(self):
         """Kemna-Vorst with q > 0."""
         price = AsianOption.geometric_price(
-            100, 100, 1.0, 0.05, 0.20, 252, 'call', q=0.03,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            252,
+            "call",
+            q=0.03,
         )
-        ref = _kemna_vorst_reference(100, 100, 1.0, 0.05, 0.20, 252, 'call', q=0.03)
+        ref = _kemna_vorst_reference(100, 100, 1.0, 0.05, 0.20, 252, "call", q=0.03)
         assert abs(price - ref) < 1e-12
 
     def test_geo_call_single_fixing_is_vanilla(self):
@@ -733,9 +981,9 @@ class TestAsianAnalytical:
         price for a vanilla European call. This is a critical sanity check.
         """
         S, K, T, r, sigma, q = 100.0, 100.0, 1.0, 0.05, 0.20, 0.02
-        geo_price = AsianOption.geometric_price(S, K, T, r, sigma, 1, 'call', q=q)
+        geo_price = AsianOption.geometric_price(S, K, T, r, sigma, 1, "call", q=q)
         bs = BlackScholesModel(sigma=sigma)
-        bs_price = bs.price(S, K, T, r, 'call', q=q)
+        bs_price = bs.price(S, K, T, r, "call", q=q)
         assert abs(geo_price - bs_price) < 1e-10
 
     def test_geo_effective_model_call_put_parity(self):
@@ -749,8 +997,8 @@ class TestAsianAnalytical:
         """
         S, K, T, r, sigma = 100.0, 110.0, 1.5, 0.04, 0.30
         n_obs = 100
-        C = AsianOption.geometric_price(S, K, T, r, sigma, n_obs, 'call')
-        P = AsianOption.geometric_price(S, K, T, r, sigma, n_obs, 'put')
+        C = AsianOption.geometric_price(S, K, T, r, sigma, n_obs, "call")
+        P = AsianOption.geometric_price(S, K, T, r, sigma, n_obs, "put")
 
         n = float(n_obs)
         sig_hat_sq = sigma * sigma * (n + 1) * (2 * n + 1) / (6 * n * n)
@@ -772,36 +1020,47 @@ class TestAsianAnalytical:
         time formula evaluated with these limits.
         """
         S, K, T, r, sigma, q = 100.0, 100.0, 1.0, 0.05, 0.20, 0.0
-        p_discrete = AsianOption.geometric_price(S, K, T, r, sigma, 10_000, 'call', q=q)
+        p_discrete = AsianOption.geometric_price(S, K, T, r, sigma, 10_000, "call", q=q)
 
         # Continuous-limit reference (same BS-like formula)
         from scipy.special import ndtr as _ndtr
+
         sig_hat_sq = sigma * sigma / 3.0
         sig_hat = np.sqrt(sig_hat_sq)
         r_hat = (r - q) / 2.0 - sigma * sigma / 12.0
         d1 = (np.log(S / K) + (r_hat + 0.5 * sig_hat_sq) * T) / (sig_hat * np.sqrt(T))
         d2 = d1 - sig_hat * np.sqrt(T)
         adj = np.exp((r_hat - r) * T)
-        p_continuous = float(
-            adj * (S * _ndtr(d1) - K * np.exp(-r_hat * T) * _ndtr(d2))
-        )
+        p_continuous = float(adj * (S * _ndtr(d1) - K * np.exp(-r_hat * T) * _ndtr(d2)))
         assert abs(p_discrete - p_continuous) < 1e-3
 
     def test_geo_call_deep_itm(self):
         """Deep ITM call: price approaches S - K * exp(-r*T) discounted."""
         price = AsianOption.geometric_price(
-            200, 50, 1.0, 0.05, 0.20, 252, 'call',
+            200,
+            50,
+            1.0,
+            0.05,
+            0.20,
+            252,
+            "call",
         )
         # Lower bound: forward minus discounted strike, corrected by
         # the effective drift. Use direct reference instead.
-        ref = _kemna_vorst_reference(200, 50, 1.0, 0.05, 0.20, 252, 'call')
+        ref = _kemna_vorst_reference(200, 50, 1.0, 0.05, 0.20, 252, "call")
         assert abs(price - ref) < 1e-12
         assert price > 145  # very deep ITM, > (S - K)
 
     def test_geo_call_deep_otm(self):
         """Deep OTM call: price is near zero."""
         price = AsianOption.geometric_price(
-            50, 200, 1.0, 0.05, 0.20, 252, 'call',
+            50,
+            200,
+            1.0,
+            0.05,
+            0.20,
+            252,
+            "call",
         )
         assert 0.0 <= price < 1.0
 
@@ -814,33 +1073,52 @@ class TestAsianMC:
 
     def test_geometric_mc_call(self):
         """MC geometric call matches Kemna-Vorst within 3 * SE."""
-        asian = AsianOption(K=100, option_type='call', avg_type='geometric')
+        asian = AsianOption(K=100, option_type="call", avg_type="geometric")
         mc = MonteCarloEngine(n_paths=ASIAN_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=ASIAN_STEPS)
         result = mc.price(asian.payoff, paths, 0.05, 1.0)
         analytical = AsianOption.geometric_price(
-            100, 100, 1.0, 0.05, 0.20, ASIAN_STEPS, 'call',
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            ASIAN_STEPS,
+            "call",
         )
         assert abs(result.price - analytical) < 3 * result.std_error
 
     def test_geometric_mc_put(self):
         """MC geometric put matches Kemna-Vorst within 3 * SE."""
-        asian = AsianOption(K=100, option_type='put', avg_type='geometric')
+        asian = AsianOption(K=100, option_type="put", avg_type="geometric")
         mc = MonteCarloEngine(n_paths=ASIAN_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=ASIAN_STEPS)
         result = mc.price(asian.payoff, paths, 0.05, 1.0)
         analytical = AsianOption.geometric_price(
-            100, 100, 1.0, 0.05, 0.20, ASIAN_STEPS, 'put',
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            ASIAN_STEPS,
+            "put",
         )
         assert abs(result.price - analytical) < 3 * result.std_error
 
     def test_geometric_mc_with_dividends(self):
-        asian = AsianOption(K=100, option_type='call', avg_type='geometric')
+        asian = AsianOption(K=100, option_type="call", avg_type="geometric")
         mc = MonteCarloEngine(n_paths=ASIAN_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, q=0.03, n_steps=ASIAN_STEPS)
         result = mc.price(asian.payoff, paths, 0.05, 1.0)
         analytical = AsianOption.geometric_price(
-            100, 100, 1.0, 0.05, 0.20, ASIAN_STEPS, 'call', q=0.03,
+            100,
+            100,
+            1.0,
+            0.05,
+            0.20,
+            ASIAN_STEPS,
+            "call",
+            q=0.03,
         )
         assert abs(result.price - analytical) < 3 * result.std_error
 
@@ -850,7 +1128,7 @@ class TestAsianMC:
         relative to plain MC. For ATM parameters the typical reduction
         is > 95% (correlation arith/geo > 0.99).
         """
-        asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
+        asian = AsianOption(K=100, option_type="call", avg_type="arithmetic")
         mc = MonteCarloEngine(n_paths=ASIAN_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=ASIAN_STEPS)
 
@@ -865,14 +1143,14 @@ class TestAsianMC:
         The control-variate estimator remains unbiased: the CV-adjusted
         price must agree with plain MC within combined SE.
         """
-        asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
+        asian = AsianOption(K=100, option_type="call", avg_type="arithmetic")
         mc = MonteCarloEngine(n_paths=ASIAN_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=ASIAN_STEPS)
         r_plain = mc.price(asian.payoff, paths, 0.05, 1.0)
         cv_fn = asian.geometric_control_fn(100, 1.0, 0.05, 0.20, n_obs=ASIAN_STEPS)
         r_cv = mc.price(asian.payoff, paths, 0.05, 1.0, control_fn=cv_fn)
 
-        combined_se = np.sqrt(r_plain.std_error ** 2 + r_cv.std_error ** 2)
+        combined_se = np.sqrt(r_plain.std_error**2 + r_cv.std_error**2)
         assert abs(r_plain.price - r_cv.price) < 4 * combined_se
 
 
@@ -907,8 +1185,8 @@ class TestAsianProperties:
         """
         mc = MonteCarloEngine(n_paths=ASIAN_PATHS, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=ASIAN_STEPS)
-        call = AsianOption(K=100, option_type='call', avg_type='arithmetic')
-        put = AsianOption(K=100, option_type='put', avg_type='arithmetic')
+        call = AsianOption(K=100, option_type="call", avg_type="arithmetic")
+        put = AsianOption(K=100, option_type="put", avg_type="arithmetic")
         r_call = mc.price(call.payoff, paths, 0.05, 1.0)
         r_put = mc.price(put.payoff, paths, 0.05, 1.0)
 
@@ -917,7 +1195,7 @@ class TestAsianProperties:
         rhs = discount * (empirical_avg_mean - 100.0)
         lhs = r_call.price - r_put.price
 
-        combined_se = np.sqrt(r_call.std_error ** 2 + r_put.std_error ** 2)
+        combined_se = np.sqrt(r_call.std_error**2 + r_put.std_error**2)
         assert abs(lhs - rhs) < 4 * combined_se
 
     def test_geometric_call_lt_european_call(self):
@@ -926,15 +1204,14 @@ class TestAsianProperties:
         Asian call is strictly cheaper than the vanilla European call
         with the same parameters.
         """
-        geo = AsianOption.geometric_price(100, 100, 1.0, 0.05, 0.20, 252, 'call')
+        geo = AsianOption.geometric_price(100, 100, 1.0, 0.05, 0.20, 252, "call")
         bs = BlackScholesModel(sigma=0.20)
-        euro = bs.price(100, 100, 1.0, 0.05, 'call')
+        euro = bs.price(100, 100, 1.0, 0.05, "call")
         assert geo < euro
 
     def test_floating_call_always_non_negative(self):
         """Floating-strike call payoff S_T - mean(S) is always >= 0."""
-        asian = AsianOption(option_type='call', avg_type='arithmetic',
-                             strike_type='floating')
+        asian = AsianOption(option_type="call", avg_type="arithmetic", strike_type="floating")
         mc = MonteCarloEngine(n_paths=2000, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=50)
         payoffs = asian.payoff(paths)
@@ -944,8 +1221,7 @@ class TestAsianProperties:
 
     def test_floating_put_always_non_negative(self):
         """Floating-strike put payoff mean(S) - S_T is always >= 0."""
-        asian = AsianOption(option_type='put', avg_type='arithmetic',
-                             strike_type='floating')
+        asian = AsianOption(option_type="put", avg_type="arithmetic", strike_type="floating")
         mc = MonteCarloEngine(n_paths=2000, seed=MC_SEED)
         paths = mc.simulate_gbm(100, 1.0, 0.05, 0.20, n_steps=50)
         payoffs = asian.payoff(paths)
@@ -957,7 +1233,7 @@ class TestAsianProperties:
         ATM call with r > q leaves the price strictly decreasing in n.
         """
         prices = [
-            AsianOption.geometric_price(100, 100, 1.0, 0.05, 0.20, n, 'call')
+            AsianOption.geometric_price(100, 100, 1.0, 0.05, 0.20, n, "call")
             for n in [2, 5, 20, 252, 5000]
         ]
         for i in range(len(prices) - 1):
@@ -971,35 +1247,33 @@ class TestAsianEdgeCases:
     """Boundary conditions and deterministic payoffs."""
 
     def test_fixed_call_deterministic_itm(self):
-        asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
+        asian = AsianOption(K=100, option_type="call", avg_type="arithmetic")
         paths = np.array([[100.0, 110.0, 120.0, 130.0]])  # avg = 120
         payoff = asian.payoff(paths)
         assert payoff[0] == 20.0
 
     def test_fixed_put_deterministic_itm(self):
-        asian = AsianOption(K=150, option_type='put', avg_type='arithmetic')
+        asian = AsianOption(K=150, option_type="put", avg_type="arithmetic")
         paths = np.array([[100.0, 110.0, 120.0, 130.0]])  # avg = 120
         payoff = asian.payoff(paths)
         assert payoff[0] == 30.0
 
     def test_geometric_average_deterministic(self):
-        asian = AsianOption(K=100, option_type='call', avg_type='geometric')
+        asian = AsianOption(K=100, option_type="call", avg_type="geometric")
         # paths = [100, 100, 400] → geomean(fixings) = sqrt(100*400) = 200
         paths = np.array([[100.0, 100.0, 400.0]])
         payoff = asian.payoff(paths)
         assert abs(payoff[0] - 100.0) < 1e-12
 
     def test_floating_call_deterministic(self):
-        asian = AsianOption(option_type='call', avg_type='arithmetic',
-                             strike_type='floating')
+        asian = AsianOption(option_type="call", avg_type="arithmetic", strike_type="floating")
         # avg = 120, S_T = 130 → S_T - avg = 10
         paths = np.array([[100.0, 110.0, 120.0, 130.0]])
         payoff = asian.payoff(paths)
         assert payoff[0] == 10.0
 
     def test_floating_put_deterministic(self):
-        asian = AsianOption(option_type='put', avg_type='arithmetic',
-                             strike_type='floating')
+        asian = AsianOption(option_type="put", avg_type="arithmetic", strike_type="floating")
         # fixings = [140, 120, 100], avg = 120, S_T = 100 → avg - S_T = 20
         paths = np.array([[100.0, 140.0, 120.0, 100.0]])
         payoff = asian.payoff(paths)
@@ -1013,8 +1287,8 @@ class TestAsianEdgeCases:
         number near 0.5 * (S * ((e^{rT}-1)/(rT)) - K) * e^{-rT} (or
         intrinsic if ITM). We only check continuity and positivity.
         """
-        p_small = AsianOption.geometric_price(100, 100, 1.0, 0.05, 1e-4, 252, 'call')
-        p_ref = AsianOption.geometric_price(100, 100, 1.0, 0.05, 1e-3, 252, 'call')
+        p_small = AsianOption.geometric_price(100, 100, 1.0, 0.05, 1e-4, 252, "call")
+        p_ref = AsianOption.geometric_price(100, 100, 1.0, 0.05, 1e-3, 252, "call")
         assert p_small >= 0.0
         assert abs(p_small - p_ref) < 1.0  # smoothly varying
 
@@ -1023,7 +1297,7 @@ class TestAsianEdgeCases:
         As T -> 0, the Kemna-Vorst price tends to the intrinsic value
         max(S_0 - K, 0) since the average is pinned near S_0.
         """
-        p = AsianOption.geometric_price(100, 90, 1e-6, 0.05, 0.20, 252, 'call')
+        p = AsianOption.geometric_price(100, 90, 1e-6, 0.05, 0.20, 252, "call")
         intrinsic = 100 - 90
         assert abs(p - intrinsic) < 1e-3
 
@@ -1036,40 +1310,38 @@ class TestAsianValidation:
 
     def test_fixed_without_K(self):
         with pytest.raises(ValueError, match="K is required"):
-            AsianOption(option_type='call', avg_type='arithmetic',
-                         strike_type='fixed')
+            AsianOption(option_type="call", avg_type="arithmetic", strike_type="fixed")
 
     def test_fixed_negative_K(self):
         with pytest.raises(ValueError, match="K must be > 0"):
-            AsianOption(K=-50, option_type='call', avg_type='arithmetic',
-                         strike_type='fixed')
+            AsianOption(K=-50, option_type="call", avg_type="arithmetic", strike_type="fixed")
 
     def test_fixed_zero_K(self):
         with pytest.raises(ValueError, match="K must be > 0"):
-            AsianOption(K=0, option_type='call', avg_type='arithmetic',
-                         strike_type='fixed')
+            AsianOption(K=0, option_type="call", avg_type="arithmetic", strike_type="fixed")
 
     def test_floating_K_ignored(self):
         """K passed with strike_type='floating' is stored as None."""
-        asian = AsianOption(K=100, option_type='call', avg_type='arithmetic',
-                             strike_type='floating')
+        asian = AsianOption(
+            K=100, option_type="call", avg_type="arithmetic", strike_type="floating"
+        )
         assert asian.K is None
 
     def test_invalid_option_type(self):
         with pytest.raises(ValueError, match="option_type"):
-            AsianOption(K=100, option_type='binary', avg_type='arithmetic')
+            AsianOption(K=100, option_type="binary", avg_type="arithmetic")
 
     def test_invalid_avg_type(self):
         with pytest.raises(ValueError, match="avg_type"):
-            AsianOption(K=100, avg_type='harmonic')
+            AsianOption(K=100, avg_type="harmonic")
 
     def test_invalid_strike_type(self):
         with pytest.raises(ValueError, match="strike_type"):
-            AsianOption(K=100, strike_type='exotic')
+            AsianOption(K=100, strike_type="exotic")
 
     def test_shorthand_option_type(self):
-        a1 = AsianOption(K=100, option_type='c', avg_type='geometric')
-        a2 = AsianOption(K=100, option_type='call', avg_type='geometric')
+        a1 = AsianOption(K=100, option_type="c", avg_type="geometric")
+        a2 = AsianOption(K=100, option_type="call", avg_type="geometric")
         assert a1 == a2
 
     def test_geometric_price_negative_S(self):
@@ -1094,11 +1366,11 @@ class TestAsianValidation:
 
     def test_cv_requires_arithmetic_fixed(self):
         """geometric_control_fn rejects non-arithmetic / non-fixed Asians."""
-        geo = AsianOption(K=100, avg_type='geometric', strike_type='fixed')
+        geo = AsianOption(K=100, avg_type="geometric", strike_type="fixed")
         with pytest.raises(ValueError, match="arithmetic fixed-strike"):
             geo.geometric_control_fn(100, 1.0, 0.05, 0.20, 252)
 
-        flt = AsianOption(avg_type='arithmetic', strike_type='floating')
+        flt = AsianOption(avg_type="arithmetic", strike_type="floating")
         with pytest.raises(ValueError, match="arithmetic fixed-strike"):
             flt.geometric_control_fn(100, 1.0, 0.05, 0.20, 252)
 
@@ -1110,8 +1382,7 @@ class TestAsianIdentity:
     """Object identity: repr, equality, hashing."""
 
     def test_repr_fixed(self):
-        a = AsianOption(K=100, option_type='call', avg_type='arithmetic',
-                         strike_type='fixed')
+        a = AsianOption(K=100, option_type="call", avg_type="arithmetic", strike_type="fixed")
         r = repr(a)
         assert "K=100" in r
         assert "call" in r
@@ -1119,17 +1390,16 @@ class TestAsianIdentity:
         assert "fixed" in r
 
     def test_repr_floating(self):
-        a = AsianOption(option_type='put', avg_type='geometric',
-                         strike_type='floating')
+        a = AsianOption(option_type="put", avg_type="geometric", strike_type="floating")
         r = repr(a)
         assert "put" in r
         assert "geometric" in r
         assert "floating" in r
 
     def test_eq_and_hash(self):
-        a = AsianOption(K=100, option_type='call', avg_type='arithmetic')
-        b = AsianOption(K=100, option_type='call', avg_type='arithmetic')
-        c = AsianOption(K=100, option_type='put', avg_type='arithmetic')
+        a = AsianOption(K=100, option_type="call", avg_type="arithmetic")
+        b = AsianOption(K=100, option_type="call", avg_type="arithmetic")
+        c = AsianOption(K=100, option_type="put", avg_type="arithmetic")
         assert a == b
         assert hash(a) == hash(b)
         assert len({a, b, c}) == 2
@@ -1149,22 +1419,19 @@ asian_n_st = st.integers(min_value=1, max_value=500)
 class TestAsianHypothesis:
     """Property-based tests covering 500+ random parameter combinations."""
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, n=asian_n_st)
+    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st, n=asian_n_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
     def test_geometric_call_non_negative(self, S, K, T, r, sigma, q, n):
-        price = AsianOption.geometric_price(S, K, T, r, sigma, n, 'call', q=q)
+        price = AsianOption.geometric_price(S, K, T, r, sigma, n, "call", q=q)
         assert price >= -1e-12
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, n=asian_n_st)
+    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st, n=asian_n_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
     def test_geometric_put_non_negative(self, S, K, T, r, sigma, q, n):
-        price = AsianOption.geometric_price(S, K, T, r, sigma, n, 'put', q=q)
+        price = AsianOption.geometric_price(S, K, T, r, sigma, n, "put", q=q)
         assert price >= -1e-12
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, n=asian_n_st)
+    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st, n=asian_n_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
     def test_geometric_call_monotone_in_K(self, S, K, T, r, sigma, q, n):
         """
@@ -1174,19 +1441,25 @@ class TestAsianHypothesis:
         K, the Kemna-Vorst formula inherits this property directly from
         the Black-Scholes call with the effective parameters.
         """
-        p_low = AsianOption.geometric_price(S, K, T, r, sigma, n, 'call', q=q)
+        p_low = AsianOption.geometric_price(S, K, T, r, sigma, n, "call", q=q)
         p_high = AsianOption.geometric_price(
-            S, K + 10.0, T, r, sigma, n, 'call', q=q,
+            S,
+            K + 10.0,
+            T,
+            r,
+            sigma,
+            n,
+            "call",
+            q=q,
         )
         assert p_high <= p_low + 1e-10
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, n=asian_n_st)
+    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st, n=asian_n_st)
     @settings(max_examples=500, suppress_health_check=[HealthCheck.too_slow])
     def test_geometric_effective_parity(self, S, K, T, r, sigma, q, n):
         """C_eff - P_eff = S - K * exp(-r_hat * T) in the effective model."""
-        C = AsianOption.geometric_price(S, K, T, r, sigma, n, 'call', q=q)
-        P = AsianOption.geometric_price(S, K, T, r, sigma, n, 'put', q=q)
+        C = AsianOption.geometric_price(S, K, T, r, sigma, n, "call", q=q)
+        P = AsianOption.geometric_price(S, K, T, r, sigma, n, "put", q=q)
         n_f = float(n)
         sig_hat_sq = sigma * sigma * (n_f + 1) * (2 * n_f + 1) / (6 * n_f * n_f)
         r_hat = 0.5 * sig_hat_sq + (r - q - 0.5 * sigma * sigma) * (n_f + 1) / (2 * n_f)
@@ -1253,13 +1526,21 @@ class TestBarrierAnalytical:
         S, K, T, r, sigma, q = 100.0, 100.0, 1.0, 0.05, 0.20, 0.0
         H = 90.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-out', 'call', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-out",
+            "call",
+            q=q,
         )
 
-        lam = (r - q + 0.5 * sigma ** 2) / sigma ** 2
+        lam = (r - q + 0.5 * sigma**2) / sigma**2
         bs = BlackScholesModel(sigma=sigma)
-        c_full = bs.price(S, K, T, r, 'call', q)
-        c_reflect = bs.price(H * H / S, K, T, r, 'call', q)
+        c_full = bs.price(S, K, T, r, "call", q)
+        c_reflect = bs.price(H * H / S, K, T, r, "call", q)
         expected = c_full - (H / S) ** (2 * lam - 2) * c_reflect
 
         assert abs(price - expected) < 1e-10
@@ -1273,27 +1554,38 @@ class TestBarrierAnalytical:
         S, K, T, r, sigma, q = 100.0, 100.0, 1.0, 0.05, 0.20, 0.0
         H = 115.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'up-and-out', 'put', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "up-and-out",
+            "put",
+            q=q,
         )
 
-        lam = (r - q + 0.5 * sigma ** 2) / sigma ** 2
+        lam = (r - q + 0.5 * sigma**2) / sigma**2
         bs = BlackScholesModel(sigma=sigma)
-        p_full = bs.price(S, K, T, r, 'put', q)
-        p_reflect = bs.price(H * H / S, K, T, r, 'put', q)
+        p_full = bs.price(S, K, T, r, "put", q)
+        p_reflect = bs.price(H * H / S, K, T, r, "put", q)
         expected = p_full - (H / S) ** (2 * lam - 2) * p_reflect
 
         assert abs(price - expected) < 1e-10
 
-    @pytest.mark.parametrize("bt,opt,H", [
-        ('down-and-out', 'call', 90.0),
-        ('up-and-out',   'call', 120.0),
-        ('down-and-out', 'put',  90.0),
-        ('up-and-out',   'put',  120.0),
-        ('down-and-out', 'call', 105.0),
-        ('up-and-out',   'call',  95.0),
-        ('down-and-out', 'put',  105.0),
-        ('up-and-out',   'put',   95.0),
-    ])
+    @pytest.mark.parametrize(
+        "bt,opt,H",
+        [
+            ("down-and-out", "call", 90.0),
+            ("up-and-out", "call", 120.0),
+            ("down-and-out", "put", 90.0),
+            ("up-and-out", "put", 120.0),
+            ("down-and-out", "call", 105.0),
+            ("up-and-out", "call", 95.0),
+            ("down-and-out", "put", 105.0),
+            ("up-and-out", "put", 95.0),
+        ],
+    )
     def test_in_out_parity(self, bt, opt, H):
         """
         Exact in-out parity: V_in(H) + V_out(H) = V_vanilla. The eight
@@ -1301,14 +1593,30 @@ class TestBarrierAnalytical:
         each (direction, option_type) pair.
         """
         S, K, T, r, sigma, q = 100.0, 100.0, 1.0, 0.05, 0.20, 0.02
-        direction = 'down' if bt.startswith('down') else 'up'
-        bt_other = f'{direction}-and-in'
+        direction = "down" if bt.startswith("down") else "up"
+        bt_other = f"{direction}-and-in"
 
         v_out = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, bt, opt, q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            bt,
+            opt,
+            q=q,
         )
         v_in = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, bt_other, opt, q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            bt_other,
+            opt,
+            q=q,
         )
         bs = BlackScholesModel(sigma=sigma)
         vanilla = bs.price(S, K, T, r, opt, q)
@@ -1320,20 +1628,34 @@ class TestBarrierAnalytical:
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 1.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-out', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-out",
+            "call",
         )
         bs = BlackScholesModel(sigma=sigma)
-        vanilla = bs.price(S, K, T, r, 'call')
+        vanilla = bs.price(S, K, T, r, "call")
         assert abs(price - vanilla) < 1e-6
 
     def test_up_out_call_far_barrier_is_vanilla(self):
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 10_000.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'up-and-out', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "up-and-out",
+            "call",
         )
         bs = BlackScholesModel(sigma=sigma)
-        vanilla = bs.price(S, K, T, r, 'call')
+        vanilla = bs.price(S, K, T, r, "call")
         assert abs(price - vanilla) < 1e-6
 
     def test_down_in_call_far_barrier_is_zero(self):
@@ -1341,7 +1663,14 @@ class TestBarrierAnalytical:
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 1.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-in', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-in",
+            "call",
         )
         assert price < 1e-6
 
@@ -1349,7 +1678,14 @@ class TestBarrierAnalytical:
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 10_000.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'up-and-in', 'put',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "up-and-in",
+            "put",
         )
         assert price < 1e-6
 
@@ -1358,10 +1694,17 @@ class TestBarrierAnalytical:
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 100.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-in', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-in",
+            "call",
         )
         bs = BlackScholesModel(sigma=sigma)
-        vanilla = bs.price(S, K, T, r, 'call')
+        vanilla = bs.price(S, K, T, r, "call")
         assert abs(price - vanilla) < 1e-10
 
     def test_already_breached_up_out_call_is_rebate(self):
@@ -1370,7 +1713,15 @@ class TestBarrierAnalytical:
         H = 100.0
         rebate = 5.0
         price = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'up-and-out', 'call', rebate=rebate,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "up-and-out",
+            "call",
+            rebate=rebate,
         )
         assert abs(price - rebate) < 1e-12
 
@@ -1382,10 +1733,26 @@ class TestBarrierAnalytical:
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 70.0
         p_no = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-in', 'call', rebate=0.0,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-in",
+            "call",
+            rebate=0.0,
         )
         p_yes = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-in', 'call', rebate=10.0,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-in",
+            "call",
+            rebate=10.0,
         )
         assert p_yes > p_no
         assert p_yes <= p_no + 10.0 * np.exp(-r * T) + 1e-10
@@ -1401,12 +1768,14 @@ class TestBarrierMC:
     """
 
     def test_payoff_shape(self):
-        bar = BarrierOption(K=100, barrier=90, barrier_type='down-and-out')
-        paths = np.array([
-            [100.0, 105.0, 110.0, 120.0],  # alive, ITM -> 20
-            [100.0,  95.0,  85.0, 100.0],  # knocked out -> 0
-            [100.0, 100.0, 100.0,  95.0],  # alive, OTM  -> 0
-        ])
+        bar = BarrierOption(K=100, barrier=90, barrier_type="down-and-out")
+        paths = np.array(
+            [
+                [100.0, 105.0, 110.0, 120.0],  # alive, ITM -> 20
+                [100.0, 95.0, 85.0, 100.0],  # knocked out -> 0
+                [100.0, 100.0, 100.0, 95.0],  # alive, OTM  -> 0
+            ]
+        )
         payoffs = bar.payoff(paths)
         assert payoffs.shape == (3,)
         np.testing.assert_allclose(payoffs, [20.0, 0.0, 0.0])
@@ -1416,14 +1785,16 @@ class TestBarrierMC:
         Knock-in payoff on the same paths is the complement of knock-out.
         Sum must equal the vanilla payoff exactly.
         """
-        out = BarrierOption(K=100, barrier=90, barrier_type='down-and-out')
-        ins = BarrierOption(K=100, barrier=90, barrier_type='down-and-in')
-        paths = np.array([
-            [100.0, 105.0, 110.0, 120.0],
-            [100.0,  95.0,  85.0, 100.0],
-            [100.0, 100.0, 100.0,  95.0],
-            [100.0,  88.0,  95.0, 130.0],
-        ])
+        out = BarrierOption(K=100, barrier=90, barrier_type="down-and-out")
+        ins = BarrierOption(K=100, barrier=90, barrier_type="down-and-in")
+        paths = np.array(
+            [
+                [100.0, 105.0, 110.0, 120.0],
+                [100.0, 95.0, 85.0, 100.0],
+                [100.0, 100.0, 100.0, 95.0],
+                [100.0, 88.0, 95.0, 130.0],
+            ]
+        )
         vanilla = np.maximum(paths[:, -1] - 100.0, 0.0)
         np.testing.assert_allclose(out.payoff(paths) + ins.payoff(paths), vanilla)
 
@@ -1435,54 +1806,80 @@ class TestBarrierMC:
         """
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 90.0
-        bar = BarrierOption(K=K, barrier=H, barrier_type='down-and-out')
+        bar = BarrierOption(K=K, barrier=H, barrier_type="down-and-out")
         res = _mc_barrier_price(bar, S, T, r, sigma)
 
         dt = T / BARRIER_STEPS
-        H_eff = BarrierOption.continuity_correction(H, sigma, dt, 'down')
+        H_eff = BarrierOption.continuity_correction(H, sigma, dt, "down")
         rr_shift = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H_eff, 'down-and-out', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H_eff,
+            "down-and-out",
+            "call",
         )
         assert abs(res.price - rr_shift) < 3.5 * res.std_error
 
     def test_up_out_call_mc_vs_analytical_bgy(self):
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 130.0
-        bar = BarrierOption(K=K, barrier=H, barrier_type='up-and-out')
+        bar = BarrierOption(K=K, barrier=H, barrier_type="up-and-out")
         res = _mc_barrier_price(bar, S, T, r, sigma)
 
         dt = T / BARRIER_STEPS
-        H_eff = BarrierOption.continuity_correction(H, sigma, dt, 'up')
+        H_eff = BarrierOption.continuity_correction(H, sigma, dt, "up")
         rr_shift = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H_eff, 'up-and-out', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H_eff,
+            "up-and-out",
+            "call",
         )
         assert abs(res.price - rr_shift) < 3.5 * res.std_error
 
     def test_down_in_put_mc_vs_analytical_bgy(self):
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 85.0
-        bar = BarrierOption(K=K, barrier=H, barrier_type='down-and-in',
-                            option_type='put')
+        bar = BarrierOption(K=K, barrier=H, barrier_type="down-and-in", option_type="put")
         res = _mc_barrier_price(bar, S, T, r, sigma)
 
         dt = T / BARRIER_STEPS
-        H_eff = BarrierOption.continuity_correction(H, sigma, dt, 'down')
+        H_eff = BarrierOption.continuity_correction(H, sigma, dt, "down")
         rr_shift = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H_eff, 'down-and-in', 'put',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H_eff,
+            "down-and-in",
+            "put",
         )
         assert abs(res.price - rr_shift) < 3.5 * res.std_error
 
     def test_up_in_put_mc_vs_analytical_bgy(self):
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 115.0
-        bar = BarrierOption(K=K, barrier=H, barrier_type='up-and-in',
-                            option_type='put')
+        bar = BarrierOption(K=K, barrier=H, barrier_type="up-and-in", option_type="put")
         res = _mc_barrier_price(bar, S, T, r, sigma)
 
         dt = T / BARRIER_STEPS
-        H_eff = BarrierOption.continuity_correction(H, sigma, dt, 'up')
+        H_eff = BarrierOption.continuity_correction(H, sigma, dt, "up")
         rr_shift = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H_eff, 'up-and-in', 'put',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H_eff,
+            "up-and-in",
+            "put",
         )
         assert abs(res.price - rr_shift) < 3.5 * res.std_error
 
@@ -1496,12 +1893,14 @@ class TestBarrierMC:
         mc = MonteCarloEngine(n_paths=50_000, seed=MC_SEED)
         paths = mc.simulate_gbm(S, T, r, sigma, n_steps=252)
 
-        out = BarrierOption(K=K, barrier=H, barrier_type='down-and-out')
-        ins = BarrierOption(K=K, barrier=H, barrier_type='down-and-in')
+        out = BarrierOption(K=K, barrier=H, barrier_type="down-and-out")
+        ins = BarrierOption(K=K, barrier=H, barrier_type="down-and-in")
         vanilla = np.maximum(paths[:, -1] - K, 0.0)
         np.testing.assert_allclose(
-            out.payoff(paths) + ins.payoff(paths), vanilla,
-            rtol=0, atol=1e-12,
+            out.payoff(paths) + ins.payoff(paths),
+            vanilla,
+            rtol=0,
+            atol=1e-12,
         )
 
 
@@ -1517,22 +1916,22 @@ class TestBarrierBGY:
         it from the up-correction at sigma=1, dt=1:
             H_eff / H = exp(+beta * sigma * sqrt(dt)) = exp(beta).
         """
-        ratio = BarrierOption.continuity_correction(100.0, 1.0, 1.0, 'up') / 100.0
+        ratio = BarrierOption.continuity_correction(100.0, 1.0, 1.0, "up") / 100.0
         assert abs(ratio - np.exp(0.5826)) < 1e-4
 
     def test_correction_up_pushes_higher(self):
-        H_eff = BarrierOption.continuity_correction(120.0, 0.20, 1 / 252, 'up')
+        H_eff = BarrierOption.continuity_correction(120.0, 0.20, 1 / 252, "up")
         assert H_eff > 120.0
 
     def test_correction_down_pushes_lower(self):
-        H_eff = BarrierOption.continuity_correction(80.0, 0.20, 1 / 252, 'down')
+        H_eff = BarrierOption.continuity_correction(80.0, 0.20, 1 / 252, "down")
         assert H_eff < 80.0
 
     def test_correction_converges_as_dt_zero(self):
         """H_eff -> H as dt -> 0 (the continuous-monitoring limit)."""
         H = 100.0
-        H_coarse = BarrierOption.continuity_correction(H, 0.20, 1e-1, 'up')
-        H_fine = BarrierOption.continuity_correction(H, 0.20, 1e-8, 'up')
+        H_coarse = BarrierOption.continuity_correction(H, 0.20, 1e-1, "up")
+        H_fine = BarrierOption.continuity_correction(H, 0.20, 1e-8, "up")
         assert abs(H_fine - H) < abs(H_coarse - H)
         assert abs(H_fine - H) < 1e-2
 
@@ -1550,15 +1949,29 @@ class TestBarrierBGY:
 
         mc = MonteCarloEngine(n_paths=400_000, seed=MC_SEED)
         paths = mc.simulate_gbm(S, T, r, sigma, n_steps=n_steps)
-        bar = BarrierOption(K=K, barrier=H, barrier_type='down-and-out')
+        bar = BarrierOption(K=K, barrier=H, barrier_type="down-and-out")
         res = mc.price(bar.payoff, paths, r, T)
 
         rr_nominal = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-out', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-out",
+            "call",
         )
-        H_eff = BarrierOption.continuity_correction(H, sigma, dt, 'down')
+        H_eff = BarrierOption.continuity_correction(H, sigma, dt, "down")
         rr_shift = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H_eff, 'down-and-out', 'call',
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H_eff,
+            "down-and-out",
+            "call",
         )
         gap_nom = abs(res.price - rr_nominal)
         gap_shift = abs(res.price - rr_shift)
@@ -1572,29 +1985,28 @@ class TestBarrierEdgeCases:
     """Hand-crafted paths verify payoff semantics exactly."""
 
     def test_deterministic_knock_out_down(self):
-        bar = BarrierOption(K=100, barrier=95, barrier_type='down-and-out')
+        bar = BarrierOption(K=100, barrier=95, barrier_type="down-and-out")
         paths = np.array([[100.0, 98.0, 94.0, 110.0]])
         assert bar.payoff(paths)[0] == 0.0
 
     def test_deterministic_survives_down_out(self):
-        bar = BarrierOption(K=100, barrier=95, barrier_type='down-and-out')
+        bar = BarrierOption(K=100, barrier=95, barrier_type="down-and-out")
         paths = np.array([[100.0, 98.0, 96.0, 115.0]])  # never <= 95
         assert bar.payoff(paths)[0] == 15.0
 
     def test_deterministic_knock_in_up(self):
-        bar = BarrierOption(K=100, barrier=110, barrier_type='up-and-in')
+        bar = BarrierOption(K=100, barrier=110, barrier_type="up-and-in")
         paths = np.array([[100.0, 112.0, 105.0, 120.0]])
         assert bar.payoff(paths)[0] == 20.0
 
     def test_deterministic_no_knock_in_down(self):
-        bar = BarrierOption(K=100, barrier=85, barrier_type='down-and-in',
-                            option_type='put')
+        bar = BarrierOption(K=100, barrier=85, barrier_type="down-and-in", option_type="put")
         paths = np.array([[100.0, 90.0, 92.0, 88.0]])  # never <= 85
         assert bar.payoff(paths)[0] == 0.0
 
     def test_initial_spot_counts_in_extremum(self):
         """S_0 at the barrier is already a breach (weak inequality)."""
-        bar = BarrierOption(K=100, barrier=100, barrier_type='down-and-out')
+        bar = BarrierOption(K=100, barrier=100, barrier_type="down-and-out")
         paths = np.array([[100.0, 110.0, 120.0, 115.0]])
         assert bar.payoff(paths)[0] == 0.0
 
@@ -1603,7 +2015,7 @@ class TestBarrierEdgeCases:
         np.random.seed(7)
         paths = 100.0 * np.ones((1000, 10))
         paths[:, 4] = 50.0  # force touch barrier 80
-        bar = BarrierOption(K=100, barrier=80, barrier_type='down-and-out')
+        bar = BarrierOption(K=100, barrier=80, barrier_type="down-and-out")
         payoffs = bar.payoff(paths)
         assert payoffs.shape == (1000,)
         np.testing.assert_array_equal(payoffs, 0.0)
@@ -1615,54 +2027,64 @@ class TestBarrierEdgeCases:
 class TestBarrierValidation:
     def test_constructor_negative_K(self):
         with pytest.raises(ValueError, match="K must be > 0"):
-            BarrierOption(K=-10, barrier=90, barrier_type='down-and-out')
+            BarrierOption(K=-10, barrier=90, barrier_type="down-and-out")
 
     def test_constructor_zero_barrier(self):
         with pytest.raises(ValueError, match="barrier must be > 0"):
-            BarrierOption(K=100, barrier=0, barrier_type='down-and-out')
+            BarrierOption(K=100, barrier=0, barrier_type="down-and-out")
 
     def test_constructor_invalid_barrier_type(self):
         with pytest.raises(ValueError, match="barrier_type"):
-            BarrierOption(K=100, barrier=90, barrier_type='sideways')
+            BarrierOption(K=100, barrier=90, barrier_type="sideways")
 
     def test_constructor_invalid_option_type(self):
         with pytest.raises(ValueError, match="option_type"):
-            BarrierOption(K=100, barrier=90, barrier_type='down-and-out',
-                          option_type='strange')
+            BarrierOption(K=100, barrier=90, barrier_type="down-and-out", option_type="strange")
 
     def test_constructor_negative_rebate(self):
         with pytest.raises(ValueError, match="rebate"):
-            BarrierOption(K=100, barrier=90, barrier_type='down-and-out',
-                          rebate=-1.0)
+            BarrierOption(K=100, barrier=90, barrier_type="down-and-out", rebate=-1.0)
 
     def test_analytical_zero_sigma(self):
         with pytest.raises(ValueError, match="sigma must be > 0"):
             BarrierOption.analytical_price(
-                100, 100, 1.0, 0.05, 0.0, 90, 'down-and-out', 'call',
+                100,
+                100,
+                1.0,
+                0.05,
+                0.0,
+                90,
+                "down-and-out",
+                "call",
             )
 
     def test_analytical_negative_time(self):
         with pytest.raises(ValueError, match="T must be > 0"):
             BarrierOption.analytical_price(
-                100, 100, -1.0, 0.05, 0.20, 90, 'down-and-out', 'call',
+                100,
+                100,
+                -1.0,
+                0.05,
+                0.20,
+                90,
+                "down-and-out",
+                "call",
             )
 
     def test_correction_invalid_direction(self):
         with pytest.raises(ValueError, match="direction"):
-            BarrierOption.continuity_correction(100, 0.20, 1 / 252, 'sideways')
+            BarrierOption.continuity_correction(100, 0.20, 1 / 252, "sideways")
 
     def test_correction_non_positive_dt(self):
         with pytest.raises(ValueError, match="dt must be > 0"):
-            BarrierOption.continuity_correction(100, 0.20, 0.0, 'up')
+            BarrierOption.continuity_correction(100, 0.20, 0.0, "up")
 
     def test_case_insensitive_option_type(self):
         """'C' and 'c' and 'call' are all valid."""
-        b1 = BarrierOption(K=100, barrier=90, barrier_type='down-and-out',
-                           option_type='C')
-        b2 = BarrierOption(K=100, barrier=90, barrier_type='down-and-out',
-                           option_type='call')
-        assert b1.option_type == 'call'
-        assert b2.option_type == 'call'
+        b1 = BarrierOption(K=100, barrier=90, barrier_type="down-and-out", option_type="C")
+        b2 = BarrierOption(K=100, barrier=90, barrier_type="down-and-out", option_type="call")
+        assert b1.option_type == "call"
+        assert b2.option_type == "call"
 
 
 # ----------------------------------------------------------------------------
@@ -1670,7 +2092,7 @@ class TestBarrierValidation:
 # ----------------------------------------------------------------------------
 class TestBarrierIdentity:
     def test_repr(self):
-        bar = BarrierOption(K=100, barrier=90, barrier_type='down-and-out')
+        bar = BarrierOption(K=100, barrier=90, barrier_type="down-and-out")
         r = repr(bar)
         assert "K=100" in r
         assert "barrier=90" in r
@@ -1678,21 +2100,20 @@ class TestBarrierIdentity:
         assert "call" in r
 
     def test_repr_with_rebate(self):
-        bar = BarrierOption(K=100, barrier=90, barrier_type='down-and-out',
-                            rebate=3.0)
+        bar = BarrierOption(K=100, barrier=90, barrier_type="down-and-out", rebate=3.0)
         assert "rebate=3" in repr(bar)
 
     def test_eq_and_hash(self):
-        a = BarrierOption(K=100, barrier=90, barrier_type='down-and-out')
-        b = BarrierOption(K=100, barrier=90, barrier_type='down-and-out')
-        c = BarrierOption(K=100, barrier=90, barrier_type='down-and-in')
+        a = BarrierOption(K=100, barrier=90, barrier_type="down-and-out")
+        b = BarrierOption(K=100, barrier=90, barrier_type="down-and-out")
+        c = BarrierOption(K=100, barrier=90, barrier_type="down-and-in")
         assert a == b
         assert hash(a) == hash(b)
         assert a != c
         assert len({a, b, c}) == 2
 
     def test_is_exotic_option(self):
-        bar = BarrierOption(K=100, barrier=90, barrier_type='down-and-out')
+        bar = BarrierOption(K=100, barrier=90, barrier_type="down-and-out")
         assert isinstance(bar, ExoticOption)
 
 
@@ -1700,78 +2121,178 @@ class TestBarrierIdentity:
 # 21. Barrier Option Hypothesis Property-Based Tests
 # ----------------------------------------------------------------------------
 barrier_down_factor_st = st.floats(
-    min_value=0.55, max_value=0.95, allow_nan=False, allow_infinity=False,
+    min_value=0.55,
+    max_value=0.95,
+    allow_nan=False,
+    allow_infinity=False,
 )
 barrier_up_factor_st = st.floats(
-    min_value=1.05, max_value=1.80, allow_nan=False, allow_infinity=False,
+    min_value=1.05,
+    max_value=1.80,
+    allow_nan=False,
+    allow_infinity=False,
 )
 
 
 class TestBarrierHypothesis:
     """Property-based tests with Hypothesis (300 cases per property)."""
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, f=barrier_down_factor_st)
+    @given(
+        S=spot_st,
+        K=strike_st,
+        T=time_st,
+        r=rate_st,
+        sigma=vol_st,
+        q=div_st,
+        f=barrier_down_factor_st,
+    )
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_in_out_parity_down_call(
-        self, S: float, K: float, T: float, r: float,
-        sigma: float, q: float, f: float,
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
+        f: float,
     ):
         H = S * f
         v_out = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-out', 'call', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-out",
+            "call",
+            q=q,
         )
         v_in = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-in', 'call', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-in",
+            "call",
+            q=q,
         )
         bs = BlackScholesModel(sigma=sigma)
-        vanilla = bs.price(S, K, T, r, 'call', q)
+        vanilla = bs.price(S, K, T, r, "call", q)
         assert abs(v_out + v_in - vanilla) < 1e-6 * max(vanilla, 1.0)
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, f=barrier_up_factor_st)
+    @given(
+        S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st, f=barrier_up_factor_st
+    )
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_in_out_parity_up_put(
-        self, S: float, K: float, T: float, r: float,
-        sigma: float, q: float, f: float,
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
+        f: float,
     ):
         H = S * f
         v_out = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'up-and-out', 'put', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "up-and-out",
+            "put",
+            q=q,
         )
         v_in = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'up-and-in', 'put', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "up-and-in",
+            "put",
+            q=q,
         )
         bs = BlackScholesModel(sigma=sigma)
-        vanilla = bs.price(S, K, T, r, 'put', q)
+        vanilla = bs.price(S, K, T, r, "put", q)
         assert abs(v_out + v_in - vanilla) < 1e-6 * max(vanilla, 1.0)
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, f=barrier_down_factor_st)
+    @given(
+        S=spot_st,
+        K=strike_st,
+        T=time_st,
+        r=rate_st,
+        sigma=vol_st,
+        q=div_st,
+        f=barrier_down_factor_st,
+    )
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_knock_out_leq_vanilla_call(
-        self, S: float, K: float, T: float, r: float,
-        sigma: float, q: float, f: float,
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
+        f: float,
     ):
         """Knock-out call <= vanilla call (the knock-out kills some payoff)."""
         H = S * f
         v_out = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-out', 'call', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-out",
+            "call",
+            q=q,
         )
         bs = BlackScholesModel(sigma=sigma)
-        vanilla = bs.price(S, K, T, r, 'call', q)
+        vanilla = bs.price(S, K, T, r, "call", q)
         assert v_out <= vanilla + 1e-8 * max(vanilla, 1.0)
 
-    @given(S=spot_st, K=strike_st, T=time_st, r=rate_st, sigma=vol_st,
-           q=div_st, f=barrier_down_factor_st)
+    @given(
+        S=spot_st,
+        K=strike_st,
+        T=time_st,
+        r=rate_st,
+        sigma=vol_st,
+        q=div_st,
+        f=barrier_down_factor_st,
+    )
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_knock_in_non_negative_call(
-        self, S: float, K: float, T: float, r: float,
-        sigma: float, q: float, f: float,
+        self,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
+        f: float,
     ):
         H = S * f
         v_in = BarrierOption.analytical_price(
-            S, K, T, r, sigma, H, 'down-and-in', 'call', q=q,
+            S,
+            K,
+            T,
+            r,
+            sigma,
+            H,
+            "down-and-in",
+            "call",
+            q=q,
         )
         assert v_in >= -1e-10
 
@@ -1802,25 +2323,51 @@ class TestLookbackAnalytical:
 
     def test_floating_call_positive(self):
         price = LookbackOption.analytical_price(
-            100.0, 1.0, 0.05, 0.20, 'call', 'floating', q=0.02,
+            100.0,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "floating",
+            q=0.02,
         )
         assert price > 0
 
     def test_floating_put_positive(self):
         price = LookbackOption.analytical_price(
-            100.0, 1.0, 0.05, 0.20, 'put', 'floating', q=0.02,
+            100.0,
+            1.0,
+            0.05,
+            0.20,
+            "put",
+            "floating",
+            q=0.02,
         )
         assert price > 0
 
     def test_fixed_call_positive(self):
         price = LookbackOption.analytical_price(
-            100.0, 1.0, 0.05, 0.20, 'call', 'fixed', K=100.0, q=0.02,
+            100.0,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "fixed",
+            K=100.0,
+            q=0.02,
         )
         assert price > 0
 
     def test_fixed_put_positive(self):
         price = LookbackOption.analytical_price(
-            100.0, 1.0, 0.05, 0.20, 'put', 'fixed', K=100.0, q=0.02,
+            100.0,
+            1.0,
+            0.05,
+            0.20,
+            "put",
+            "fixed",
+            K=100.0,
+            q=0.02,
         )
         assert price > 0
 
@@ -1828,17 +2375,29 @@ class TestLookbackAnalytical:
         """Floating-strike lookback >= vanilla European (timing-risk premium)."""
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
         lb = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=q,
         )
-        bs = BlackScholesModel(sigma=sigma).price(S, S, T, r, 'call', q)
+        bs = BlackScholesModel(sigma=sigma).price(S, S, T, r, "call", q)
         assert lb > bs
 
     def test_floating_put_geq_vanilla(self):
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
         lb = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "floating",
+            q=q,
         )
-        bs = BlackScholesModel(sigma=sigma).price(S, S, T, r, 'put', q)
+        bs = BlackScholesModel(sigma=sigma).price(S, S, T, r, "put", q)
         assert lb > bs
 
     def test_zero_drift_limit_matches_main_formula(self):
@@ -1850,11 +2409,23 @@ class TestLookbackAnalytical:
         S, T, sigma = 100.0, 1.0, 0.20
         r = 0.05
         price_zero = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=r,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=r,
         )
         # Tiny bump above the _DRIFT_EPS threshold
         price_bump = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=r - 1e-6,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=r - 1e-6,
         )
         assert abs(price_zero - price_bump) < 1e-3
 
@@ -1862,10 +2433,22 @@ class TestLookbackAnalytical:
         S, T, sigma = 100.0, 1.0, 0.20
         r = 0.05
         p_zero = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'floating', q=r,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "floating",
+            q=r,
         )
         p_bump = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'floating', q=r - 1e-6,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "floating",
+            q=r - 1e-6,
         )
         assert abs(p_zero - p_bump) < 1e-3
 
@@ -1882,11 +2465,27 @@ class TestLookbackAnalytical:
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
         K = 105.0
         at_boundary = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'fixed', K=K, q=q, S_max=K,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "fixed",
+            K=K,
+            q=q,
+            S_max=K,
         )
         eps = 1e-6
         from_above = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'fixed', K=K, q=q, S_max=K + eps,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "fixed",
+            K=K,
+            q=q,
+            S_max=K + eps,
         )
         assert abs(at_boundary - from_above) < 1e-4
 
@@ -1898,11 +2497,27 @@ class TestLookbackAnalytical:
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
         K = 95.0
         at_boundary = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'fixed', K=K, q=q, S_min=K,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "fixed",
+            K=K,
+            q=q,
+            S_min=K,
         )
         eps = 1e-6
         from_below = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'fixed', K=K, q=q, S_min=K - eps,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "fixed",
+            K=K,
+            q=q,
+            S_min=K - eps,
         )
         assert abs(at_boundary - from_below) < 1e-4
 
@@ -1915,7 +2530,14 @@ class TestLookbackAnalytical:
         S_max = 120.0
         K = 80.0
         price = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'fixed', K=K, S_max=S_max,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "fixed",
+            K=K,
+            S_max=S_max,
         )
         intrinsic = np.exp(-r * T) * (S_max - K)
         assert price >= intrinsic - 1e-10
@@ -1928,10 +2550,24 @@ class TestLookbackAnalytical:
         """
         S, T, r, sigma, q = 100.0, 0.5, 0.05, 0.20, 0.02
         p_high = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=q, S_min=100.0,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=q,
+            S_min=100.0,
         )
         p_low = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=q, S_min=80.0,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=q,
+            S_min=80.0,
         )
         assert p_low > p_high
 
@@ -1943,33 +2579,33 @@ class TestLookbackPayoff:
     """Deterministic paths verify payoff formulas exactly."""
 
     def test_floating_call_deterministic(self):
-        lb = LookbackOption(option_type='call', strike_type='floating')
+        lb = LookbackOption(option_type="call", strike_type="floating")
         paths = np.array([[100.0, 80.0, 90.0, 120.0]])  # min=80, S_T=120
         np.testing.assert_allclose(lb.payoff(paths), [40.0])
 
     def test_floating_put_deterministic(self):
-        lb = LookbackOption(option_type='put', strike_type='floating')
+        lb = LookbackOption(option_type="put", strike_type="floating")
         paths = np.array([[100.0, 130.0, 110.0, 90.0]])  # max=130, S_T=90
         np.testing.assert_allclose(lb.payoff(paths), [40.0])
 
     def test_fixed_call_deterministic_itm(self):
-        lb = LookbackOption(option_type='call', strike_type='fixed', K=100.0)
+        lb = LookbackOption(option_type="call", strike_type="fixed", K=100.0)
         paths = np.array([[100.0, 120.0, 115.0, 110.0]])  # max=120
         np.testing.assert_allclose(lb.payoff(paths), [20.0])
 
     def test_fixed_call_deterministic_otm(self):
-        lb = LookbackOption(option_type='call', strike_type='fixed', K=150.0)
+        lb = LookbackOption(option_type="call", strike_type="fixed", K=150.0)
         paths = np.array([[100.0, 120.0, 115.0, 110.0]])  # max=120 < K=150
         np.testing.assert_allclose(lb.payoff(paths), [0.0])
 
     def test_fixed_put_deterministic_itm(self):
-        lb = LookbackOption(option_type='put', strike_type='fixed', K=100.0)
+        lb = LookbackOption(option_type="put", strike_type="fixed", K=100.0)
         paths = np.array([[100.0, 80.0, 85.0, 90.0]])  # min=80
         np.testing.assert_allclose(lb.payoff(paths), [20.0])
 
     def test_floating_call_always_non_negative(self):
         """Floating-strike payoffs are always >= 0 (never OTM)."""
-        lb = LookbackOption(option_type='call', strike_type='floating')
+        lb = LookbackOption(option_type="call", strike_type="floating")
         np.random.seed(MC_SEED)
         mc = MonteCarloEngine(n_paths=5000, seed=MC_SEED)
         paths = mc.simulate_gbm(100.0, 1.0, 0.05, 0.20, n_steps=100)
@@ -1977,7 +2613,7 @@ class TestLookbackPayoff:
         assert np.all(payoffs >= 0.0)
 
     def test_floating_put_always_non_negative(self):
-        lb = LookbackOption(option_type='put', strike_type='floating')
+        lb = LookbackOption(option_type="put", strike_type="floating")
         mc = MonteCarloEngine(n_paths=5000, seed=MC_SEED)
         paths = mc.simulate_gbm(100.0, 1.0, 0.05, 0.20, n_steps=100)
         payoffs = lb.payoff(paths)
@@ -1985,7 +2621,7 @@ class TestLookbackPayoff:
 
     def test_s0_included_in_extremum(self):
         """Running extremum includes the initial spot paths[:, 0]."""
-        lb = LookbackOption(option_type='call', strike_type='floating')
+        lb = LookbackOption(option_type="call", strike_type="floating")
         paths = np.array([[100.0, 105.0, 110.0, 115.0]])  # min=100=S0
         np.testing.assert_allclose(lb.payoff(paths), [15.0])
 
@@ -2003,8 +2639,14 @@ class TestLookbackMC:
     """
 
     def _mc_with_bgk(
-        self, lb: LookbackOption, S: float, T: float, r: float,
-        sigma: float, n_steps: int = LOOKBACK_STEPS, q: float = 0.0,
+        self,
+        lb: LookbackOption,
+        S: float,
+        T: float,
+        r: float,
+        sigma: float,
+        n_steps: int = LOOKBACK_STEPS,
+        q: float = 0.0,
     ):
         """
         Run MC with Broadie-Glasserman-Kou adjustment to the discrete
@@ -2015,20 +2657,26 @@ class TestLookbackMC:
         paths = mc.simulate_gbm(S, T, r, sigma, q=q, n_steps=n_steps)
         dt = T / n_steps
         min_corrected = LookbackOption.continuity_correction(
-            np.min(paths, axis=1), sigma, dt, 'min',
+            np.min(paths, axis=1),
+            sigma,
+            dt,
+            "min",
         )
         max_corrected = LookbackOption.continuity_correction(
-            np.max(paths, axis=1), sigma, dt, 'max',
+            np.max(paths, axis=1),
+            sigma,
+            dt,
+            "max",
         )
         S_T = paths[:, -1]
 
-        if lb.strike_type == 'floating':
-            if lb.option_type == 'call':
+        if lb.strike_type == "floating":
+            if lb.option_type == "call":
                 raw = S_T - min_corrected
             else:
                 raw = max_corrected - S_T
         else:
-            if lb.option_type == 'call':
+            if lb.option_type == "call":
                 raw = np.maximum(max_corrected - lb.K, 0.0)
             else:
                 raw = np.maximum(lb.K - min_corrected, 0.0)
@@ -2037,37 +2685,63 @@ class TestLookbackMC:
 
     def test_floating_call_mc_vs_analytical(self):
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
-        lb = LookbackOption(option_type='call', strike_type='floating')
+        lb = LookbackOption(option_type="call", strike_type="floating")
         res = self._mc_with_bgk(lb, S, T, r, sigma, q=q)
         analytical = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=q,
         )
         assert abs(res.price - analytical) < 3.5 * res.std_error
 
     def test_floating_put_mc_vs_analytical(self):
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
-        lb = LookbackOption(option_type='put', strike_type='floating')
+        lb = LookbackOption(option_type="put", strike_type="floating")
         res = self._mc_with_bgk(lb, S, T, r, sigma, q=q)
         analytical = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "floating",
+            q=q,
         )
         assert abs(res.price - analytical) < 3.5 * res.std_error
 
     def test_fixed_call_mc_vs_analytical(self):
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
-        lb = LookbackOption(option_type='call', strike_type='fixed', K=105.0)
+        lb = LookbackOption(option_type="call", strike_type="fixed", K=105.0)
         res = self._mc_with_bgk(lb, S, T, r, sigma, q=q)
         analytical = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'fixed', K=105.0, q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "fixed",
+            K=105.0,
+            q=q,
         )
         assert abs(res.price - analytical) < 3.5 * res.std_error
 
     def test_fixed_put_mc_vs_analytical(self):
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
-        lb = LookbackOption(option_type='put', strike_type='fixed', K=95.0)
+        lb = LookbackOption(option_type="put", strike_type="fixed", K=95.0)
         res = self._mc_with_bgk(lb, S, T, r, sigma, q=q)
         analytical = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'fixed', K=95.0, q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "fixed",
+            K=95.0,
+            q=q,
         )
         assert abs(res.price - analytical) < 3.5 * res.std_error
 
@@ -2077,20 +2751,34 @@ class TestLookbackMC:
         (_fixed_call_zero_drift) — previously untested against MC.
         """
         S, T, r, sigma = 100.0, 1.0, 0.05, 0.20
-        lb = LookbackOption(option_type='call', strike_type='fixed', K=105.0)
+        lb = LookbackOption(option_type="call", strike_type="fixed", K=105.0)
         res = self._mc_with_bgk(lb, S, T, r, sigma, q=r)
         analytical = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'fixed', K=105.0, q=r,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "fixed",
+            K=105.0,
+            q=r,
         )
         assert abs(res.price - analytical) < 3.5 * res.std_error
 
     def test_fixed_put_mc_vs_analytical_zero_drift(self):
         """r = q routes the fixed-strike put through _fixed_put_zero_drift."""
         S, T, r, sigma = 100.0, 1.0, 0.05, 0.20
-        lb = LookbackOption(option_type='put', strike_type='fixed', K=95.0)
+        lb = LookbackOption(option_type="put", strike_type="fixed", K=95.0)
         res = self._mc_with_bgk(lb, S, T, r, sigma, q=r)
         analytical = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'fixed', K=95.0, q=r,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "fixed",
+            K=95.0,
+            q=r,
         )
         assert abs(res.price - analytical) < 3.5 * res.std_error
 
@@ -2112,72 +2800,106 @@ class TestLookbackEdgeCases:
         """
         S, T, r, sigma, q = 100.0, 1.0, 0.05, 0.20, 0.02
         price = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'fixed', K=1e-8, q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "fixed",
+            K=1e-8,
+            q=q,
         )
         assert price > S * np.exp(-q * T)
 
     def test_constructor_fixed_missing_K(self):
         with pytest.raises(ValueError, match="K is required"):
-            LookbackOption(strike_type='fixed')
+            LookbackOption(strike_type="fixed")
 
     def test_constructor_fixed_negative_K(self):
         with pytest.raises(ValueError, match="K must be > 0"):
-            LookbackOption(strike_type='fixed', K=-10)
+            LookbackOption(strike_type="fixed", K=-10)
 
     def test_constructor_invalid_option_type(self):
         with pytest.raises(ValueError, match="option_type"):
-            LookbackOption(option_type='weird')
+            LookbackOption(option_type="weird")
 
     def test_constructor_invalid_strike_type(self):
         with pytest.raises(ValueError, match="strike_type"):
-            LookbackOption(strike_type='european')
+            LookbackOption(strike_type="european")
 
     def test_analytical_negative_sigma(self):
         with pytest.raises(ValueError, match="sigma must be > 0"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, -0.20, 'call', 'floating',
+                100,
+                1.0,
+                0.05,
+                -0.20,
+                "call",
+                "floating",
             )
 
     def test_analytical_negative_time(self):
         with pytest.raises(ValueError, match="T must be > 0"):
             LookbackOption.analytical_price(
-                100, -1.0, 0.05, 0.20, 'call', 'floating',
+                100,
+                -1.0,
+                0.05,
+                0.20,
+                "call",
+                "floating",
             )
 
     def test_analytical_fixed_missing_K(self):
         with pytest.raises(ValueError, match="K is required"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, 0.20, 'call', 'fixed',
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                "fixed",
             )
 
     def test_analytical_smin_above_spot_raises(self):
         with pytest.raises(ValueError, match="S_min must be <= S"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, 0.20, 'call', 'floating', S_min=120.0,
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                "floating",
+                S_min=120.0,
             )
 
     def test_analytical_smax_below_spot_raises(self):
         with pytest.raises(ValueError, match="S_max must be >= S"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, 0.20, 'put', 'floating', S_max=80.0,
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "put",
+                "floating",
+                S_max=80.0,
             )
 
 
 class TestLookbackIdentity:
     def test_repr_floating(self):
-        lb = LookbackOption(option_type='call', strike_type='floating')
+        lb = LookbackOption(option_type="call", strike_type="floating")
         r = repr(lb)
         assert "call" in r and "floating" in r and "K=" not in r
 
     def test_repr_fixed(self):
-        lb = LookbackOption(option_type='put', strike_type='fixed', K=100.0)
+        lb = LookbackOption(option_type="put", strike_type="fixed", K=100.0)
         r = repr(lb)
         assert "put" in r and "fixed" in r and "K=100" in r
 
     def test_eq_and_hash(self):
-        a = LookbackOption(option_type='call', strike_type='floating')
-        b = LookbackOption(option_type='call', strike_type='floating')
-        c = LookbackOption(option_type='call', strike_type='fixed', K=100.0)
+        a = LookbackOption(option_type="call", strike_type="floating")
+        b = LookbackOption(option_type="call", strike_type="floating")
+        c = LookbackOption(option_type="call", strike_type="fixed", K=100.0)
         assert a == b and hash(a) == hash(b)
         assert a != c
         assert len({a, b, c}) == 2
@@ -2196,28 +2918,55 @@ class TestLookbackHypothesis:
     @given(S=spot_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_floating_call_non_negative(
-        self, S: float, T: float, r: float, sigma: float, q: float,
+        self,
+        S: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
     ):
         assume(abs(r - q) > 1e-10 or True)  # both branches covered
         price = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=q,
         )
         assert price >= -1e-10
 
     @given(S=spot_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_floating_put_non_negative(
-        self, S: float, T: float, r: float, sigma: float, q: float,
+        self,
+        S: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
     ):
         price = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "floating",
+            q=q,
         )
         assert price >= -1e-10
 
     @given(S=spot_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_floating_call_geq_vanilla_atm(
-        self, S: float, T: float, r: float, sigma: float, q: float,
+        self,
+        S: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
     ):
         """
         Floating-strike call with S_min = S at inception beats the ATM
@@ -2226,20 +2975,37 @@ class TestLookbackHypothesis:
         >= S_T - S >= max(S_T - S, 0) pathwise — and usually strictly.
         """
         lb = LookbackOption.analytical_price(
-            S, T, r, sigma, 'call', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "call",
+            "floating",
+            q=q,
         )
-        vanilla = BlackScholesModel(sigma=sigma).price(S, S, T, r, 'call', q)
+        vanilla = BlackScholesModel(sigma=sigma).price(S, S, T, r, "call", q)
         assert lb >= vanilla - 1e-8 * max(S, 1.0)
 
     @given(S=spot_st, T=time_st, r=rate_st, sigma=vol_st, q=div_st)
     @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
     def test_floating_put_geq_vanilla_atm(
-        self, S: float, T: float, r: float, sigma: float, q: float,
+        self,
+        S: float,
+        T: float,
+        r: float,
+        sigma: float,
+        q: float,
     ):
         lb = LookbackOption.analytical_price(
-            S, T, r, sigma, 'put', 'floating', q=q,
+            S,
+            T,
+            r,
+            sigma,
+            "put",
+            "floating",
+            q=q,
         )
-        vanilla = BlackScholesModel(sigma=sigma).price(S, S, T, r, 'put', q)
+        vanilla = BlackScholesModel(sigma=sigma).price(S, S, T, r, "put", q)
         assert lb >= vanilla - 1e-8 * max(S, 1.0)
 
 
@@ -2266,48 +3032,96 @@ class TestLookbackZeroDriftFixed:
     def test_fixed_call_otm_branch_continuity(self):
         """K > S_max = S: the M = K (OTM) branch of the fixed call."""
         limit = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
-            K=120.0, q=self.R,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "call",
+            "fixed",
+            K=120.0,
+            q=self.R,
         )
         generic = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
-            K=120.0, q=self.R - self.B_SMALL,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "call",
+            "fixed",
+            K=120.0,
+            q=self.R - self.B_SMALL,
         )
         assert abs(limit - generic) < self.TOL
 
     def test_fixed_call_itm_branch_continuity(self):
         """K <= S_max: intrinsic + M = S_max branch of the fixed call."""
         limit = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
-            K=90.0, q=self.R,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "call",
+            "fixed",
+            K=90.0,
+            q=self.R,
         )
         generic = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
-            K=90.0, q=self.R - self.B_SMALL,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "call",
+            "fixed",
+            K=90.0,
+            q=self.R - self.B_SMALL,
         )
         assert abs(limit - generic) < self.TOL
 
     def test_fixed_put_otm_branch_continuity(self):
         """K < S_min = S: the M = K (OTM) branch of the fixed put."""
         limit = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
-            K=80.0, q=self.R,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "put",
+            "fixed",
+            K=80.0,
+            q=self.R,
         )
         generic = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
-            K=80.0, q=self.R - self.B_SMALL,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "put",
+            "fixed",
+            K=80.0,
+            q=self.R - self.B_SMALL,
         )
         assert abs(limit - generic) < self.TOL
 
     def test_fixed_put_itm_branch_continuity(self):
         """K >= S_min: intrinsic + M = S_min branch of the fixed put."""
         limit = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
-            K=110.0, q=self.R,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "put",
+            "fixed",
+            K=110.0,
+            q=self.R,
         )
         generic = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'put', 'fixed',
-            K=110.0, q=self.R - self.B_SMALL,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "put",
+            "fixed",
+            K=110.0,
+            q=self.R - self.B_SMALL,
         )
         assert abs(limit - generic) < self.TOL
 
@@ -2318,20 +3132,38 @@ class TestLookbackZeroDriftFixed:
         in the r = q limit.
         """
         at_boundary = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
-            K=100.0, q=self.R,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "call",
+            "fixed",
+            K=100.0,
+            q=self.R,
         )
         just_otm = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
-            K=100.0 + 1e-9, q=self.R,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "call",
+            "fixed",
+            K=100.0 + 1e-9,
+            q=self.R,
         )
         assert abs(at_boundary - just_otm) < 1e-6
 
     def test_fixed_call_zero_drift_exceeds_discounted_intrinsic(self):
         """ITM fixed call at r = q is worth more than the locked intrinsic."""
         price = LookbackOption.analytical_price(
-            self.S, self.T, self.R, self.SIGMA, 'call', 'fixed',
-            K=90.0, q=self.R,
+            self.S,
+            self.T,
+            self.R,
+            self.SIGMA,
+            "call",
+            "fixed",
+            K=90.0,
+            q=self.R,
         )
         assert price > np.exp(-self.R * self.T) * 10.0
 
@@ -2347,61 +3179,64 @@ class TestLookbackContinuityCorrection:
     """
 
     def test_max_exact_ratio(self):
-        ratio = LookbackOption.continuity_correction(100.0, 1.0, 1.0, 'max') / 100.0
+        ratio = LookbackOption.continuity_correction(100.0, 1.0, 1.0, "max") / 100.0
         assert abs(ratio - np.exp(0.5826)) < 1e-12
 
     def test_min_exact_ratio(self):
-        ratio = LookbackOption.continuity_correction(100.0, 1.0, 1.0, 'min') / 100.0
+        ratio = LookbackOption.continuity_correction(100.0, 1.0, 1.0, "min") / 100.0
         assert abs(ratio - np.exp(-0.5826)) < 1e-12
 
     def test_matches_barrier_constant(self):
         """Same BGK beta as the barrier correction: identical factors."""
-        lb_max = LookbackOption.continuity_correction(120.0, 0.20, 1 / 252, 'max')
-        ba_up = BarrierOption.continuity_correction(120.0, 0.20, 1 / 252, 'up')
+        lb_max = LookbackOption.continuity_correction(120.0, 0.20, 1 / 252, "max")
+        ba_up = BarrierOption.continuity_correction(120.0, 0.20, 1 / 252, "up")
         assert abs(lb_max - ba_up) < 1e-12
 
-        lb_min = LookbackOption.continuity_correction(80.0, 0.20, 1 / 252, 'min')
-        ba_dn = BarrierOption.continuity_correction(80.0, 0.20, 1 / 252, 'down')
+        lb_min = LookbackOption.continuity_correction(80.0, 0.20, 1 / 252, "min")
+        ba_dn = BarrierOption.continuity_correction(80.0, 0.20, 1 / 252, "down")
         assert abs(lb_min - ba_dn) < 1e-12
 
     def test_array_input_elementwise(self):
         ext = np.array([80.0, 100.0, 120.0])
-        out = LookbackOption.continuity_correction(ext, 0.20, 1 / 252, 'max')
+        out = LookbackOption.continuity_correction(ext, 0.20, 1 / 252, "max")
         assert isinstance(out, np.ndarray)
         assert out.shape == ext.shape
         factor = np.exp(0.5826 * 0.20 * np.sqrt(1 / 252))
         assert np.allclose(out, ext * factor, rtol=0.0, atol=1e-10)
 
     def test_scalar_returns_float(self):
-        out = LookbackOption.continuity_correction(100.0, 0.20, 1 / 252, 'min')
+        out = LookbackOption.continuity_correction(100.0, 0.20, 1 / 252, "min")
         assert isinstance(out, float)
 
     def test_fine_monitoring_limit(self):
         """dt -> 0: the correction vanishes (continuous monitoring)."""
-        out = LookbackOption.continuity_correction(100.0, 0.20, 1e-12, 'max')
+        out = LookbackOption.continuity_correction(100.0, 0.20, 1e-12, "max")
         assert abs(out - 100.0) < 1e-4
 
     def test_kind_normalization(self):
-        a = LookbackOption.continuity_correction(100.0, 0.20, 0.01, ' MAX ')
-        b = LookbackOption.continuity_correction(100.0, 0.20, 0.01, 'max')
+        a = LookbackOption.continuity_correction(100.0, 0.20, 0.01, " MAX ")
+        b = LookbackOption.continuity_correction(100.0, 0.20, 0.01, "max")
         assert a == b
 
     def test_invalid_kind_raises(self):
         with pytest.raises(ValueError, match="kind must be"):
-            LookbackOption.continuity_correction(100.0, 0.20, 0.01, 'up')
+            LookbackOption.continuity_correction(100.0, 0.20, 0.01, "up")
 
     def test_nonpositive_sigma_raises(self):
         with pytest.raises(ValueError, match="sigma must be > 0"):
-            LookbackOption.continuity_correction(100.0, 0.0, 0.01, 'max')
+            LookbackOption.continuity_correction(100.0, 0.0, 0.01, "max")
 
     def test_nonpositive_dt_raises(self):
         with pytest.raises(ValueError, match="dt must be > 0"):
-            LookbackOption.continuity_correction(100.0, 0.20, 0.0, 'max')
+            LookbackOption.continuity_correction(100.0, 0.20, 0.0, "max")
 
     def test_nonpositive_extremum_raises(self):
         with pytest.raises(ValueError, match="extremum"):
             LookbackOption.continuity_correction(
-                np.array([100.0, 0.0]), 0.20, 0.01, 'max',
+                np.array([100.0, 0.0]),
+                0.20,
+                0.01,
+                "max",
             )
 
 
@@ -2409,62 +3244,109 @@ class TestLookbackValidationGaps:
     """Shorthand types, raises and identity branches not previously covered."""
 
     def test_constructor_shorthand_c(self):
-        assert LookbackOption(option_type='c').option_type == 'call'
+        assert LookbackOption(option_type="c").option_type == "call"
 
     def test_constructor_shorthand_p(self):
-        assert LookbackOption(option_type='p').option_type == 'put'
+        assert LookbackOption(option_type="p").option_type == "put"
 
     def test_analytical_shorthand_matches_full_name(self):
         full = LookbackOption.analytical_price(
-            100, 1.0, 0.05, 0.20, 'call', 'floating',
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "call",
+            "floating",
         )
         short = LookbackOption.analytical_price(
-            100, 1.0, 0.05, 0.20, 'c', 'floating',
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "c",
+            "floating",
         )
         assert short == full
 
         full_p = LookbackOption.analytical_price(
-            100, 1.0, 0.05, 0.20, 'put', 'floating',
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "put",
+            "floating",
         )
         short_p = LookbackOption.analytical_price(
-            100, 1.0, 0.05, 0.20, 'p', 'floating',
+            100,
+            1.0,
+            0.05,
+            0.20,
+            "p",
+            "floating",
         )
         assert short_p == full_p
 
     def test_analytical_nonpositive_spot_raises(self):
         with pytest.raises(ValueError, match="S must be > 0"):
             LookbackOption.analytical_price(
-                0.0, 1.0, 0.05, 0.20, 'call', 'floating',
+                0.0,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                "floating",
             )
 
     def test_analytical_invalid_option_type_raises(self):
         with pytest.raises(ValueError, match="option_type"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, 0.20, 'straddle', 'floating',
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "straddle",
+                "floating",
             )
 
     def test_analytical_invalid_strike_type_raises(self):
         with pytest.raises(ValueError, match="strike_type"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, 0.20, 'call', 'asian',
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                "asian",
             )
 
     def test_analytical_nonpositive_extrema_raise(self):
         with pytest.raises(ValueError, match="S_min and S_max"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, 0.20, 'call', 'floating', S_min=-5.0,
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                "floating",
+                S_min=-5.0,
             )
 
     def test_analytical_fixed_nonpositive_K_raises(self):
         with pytest.raises(ValueError, match="K must be > 0"):
             LookbackOption.analytical_price(
-                100, 1.0, 0.05, 0.20, 'call', 'fixed', K=0.0,
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                "fixed",
+                K=0.0,
             )
 
     def test_eq_other_type_is_not_equal(self):
         lb = LookbackOption()
         assert (lb == 42) is False
-        assert lb != 'lookback'
+        assert lb != "lookback"
 
 
 class TestDigitalValidationGaps:
@@ -2479,15 +3361,15 @@ class TestDigitalValidationGaps:
         assert type(dig_np.cash_amount) is float
 
     def test_payout_type_property(self):
-        assert DigitalOption(K=100, payout_type='cash').payout_type == 'cash'
-        assert DigitalOption(K=100, payout_type='asset').payout_type == 'asset'
+        assert DigitalOption(K=100, payout_type="cash").payout_type == "cash"
+        assert DigitalOption(K=100, payout_type="asset").payout_type == "asset"
 
     def test_constructor_shorthand_c_p(self):
-        assert DigitalOption(K=100, option_type='c').option_type == 'call'
-        assert DigitalOption(K=100, option_type='p').option_type == 'put'
+        assert DigitalOption(K=100, option_type="c").option_type == "call"
+        assert DigitalOption(K=100, option_type="p").option_type == "put"
 
     def test_analytical_shorthand_matches_full_name(self):
-        for short, full in (('c', 'call'), ('p', 'put')):
+        for short, full in (("c", "call"), ("p", "put")):
             a = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, short)
             b = DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, full)
             assert a == b
@@ -2500,23 +3382,34 @@ class TestDigitalValidationGaps:
         """analytical_price now validates cash_amount like the constructor."""
         with pytest.raises(ValueError, match="cash_amount must be >= 0"):
             DigitalOption.analytical_price(
-                100, 100, 1.0, 0.05, 0.20, cash_amount=-1.0,
+                100,
+                100,
+                1.0,
+                0.05,
+                0.20,
+                cash_amount=-1.0,
             )
 
     def test_analytical_invalid_option_type_raises(self):
         with pytest.raises(ValueError, match="option_type"):
-            DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, 'digital')
+            DigitalOption.analytical_price(100, 100, 1.0, 0.05, 0.20, "digital")
 
     def test_analytical_invalid_payout_type_raises(self):
         with pytest.raises(ValueError, match="payout_type"):
             DigitalOption.analytical_price(
-                100, 100, 1.0, 0.05, 0.20, 'call', 'shares',
+                100,
+                100,
+                1.0,
+                0.05,
+                0.20,
+                "call",
+                "shares",
             )
 
     def test_eq_other_type_is_not_equal(self):
         dig = DigitalOption(K=100)
         assert (dig == 42) is False
-        assert dig != 'digital'
+        assert dig != "digital"
 
 
 # ============================================================================
@@ -2561,28 +3454,46 @@ class TestGreeksVsBlackScholes:
     def test_delta_call(self):
         mc = _greek_engine()
         delta = numerical_delta(
-            mc, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
-        ref = self._bs_ref('call')['delta']
+        ref = self._bs_ref("call")["delta"]
         assert abs(delta - ref) < 5e-3
 
     def test_delta_put(self):
         mc = _greek_engine()
         delta = numerical_delta(
-            mc, _bs_put_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            _bs_put_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
-        ref = self._bs_ref('put')['delta']
+        ref = self._bs_ref("put")["delta"]
         assert abs(delta - ref) < 5e-3
 
     def test_gamma_call(self):
         mc = _greek_engine()
         gamma = numerical_gamma(
-            mc, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
-        ref = self._bs_ref('call')['gamma']
+        ref = self._bs_ref("call")["gamma"]
         # Gamma is noisier: 1/h^2 noise amplification
         assert abs(gamma - ref) < 1e-3
 
@@ -2591,22 +3502,40 @@ class TestGreeksVsBlackScholes:
         mc_call = _greek_engine()
         mc_put = _greek_engine()
         g_call = numerical_gamma(
-            mc_call, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc_call,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
         g_put = numerical_gamma(
-            mc_put, _bs_put_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc_put,
+            _bs_put_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
         assert abs(g_call - g_put) < 1e-3
 
     def test_vega_call(self):
         mc = _greek_engine()
         vega = numerical_vega(
-            mc, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
-        ref = self._bs_ref('call')['vega']
+        ref = self._bs_ref("call")["vega"]
         # BS vega ~37.5, 2% tolerance
         assert abs(vega - ref) < 1.0
 
@@ -2615,22 +3544,40 @@ class TestGreeksVsBlackScholes:
         mc_call = _greek_engine()
         mc_put = _greek_engine()
         v_call = numerical_vega(
-            mc_call, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc_call,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
         v_put = numerical_vega(
-            mc_put, _bs_put_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc_put,
+            _bs_put_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
         assert abs(v_call - v_put) < 1.0
 
     def test_theta_call(self):
         mc = _greek_engine()
         theta = numerical_theta(
-            mc, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
-        ref = self._bs_ref('call')['theta']
+        ref = self._bs_ref("call")["theta"]
         # BS theta ~-6.4; call theta must be negative for r > 0, q = 0
         assert theta < 0
         assert abs(theta - ref) < 0.2
@@ -2638,10 +3585,16 @@ class TestGreeksVsBlackScholes:
     def test_rho_call(self):
         mc = _greek_engine()
         rho = numerical_rho(
-            mc, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
-        ref = self._bs_ref('call')['rho']
+        ref = self._bs_ref("call")["rho"]
         # BS rho ~53.2; call rho is positive
         assert rho > 0
         assert abs(rho - ref) < 0.5
@@ -2650,10 +3603,16 @@ class TestGreeksVsBlackScholes:
         """Put rho is negative (higher rate -> lower put price)."""
         mc = _greek_engine()
         rho = numerical_rho(
-            mc, _bs_put_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            _bs_put_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
-        ref = self._bs_ref('put')['rho']
+        ref = self._bs_ref("put")["rho"]
         assert rho < 0
         assert abs(rho - ref) < 0.5
 
@@ -2688,8 +3647,15 @@ class TestGreeksNumericalProperties:
             mc_crn = MonteCarloEngine(n_paths=50_000, seed=1000 + trial)
             crn_estimates.append(
                 numerical_vega(
-                    mc_crn, _bs_call_payoff(K), S, T, r, sigma, q,
-                    bump=h, n_steps=1,
+                    mc_crn,
+                    _bs_call_payoff(K),
+                    S,
+                    T,
+                    r,
+                    sigma,
+                    q,
+                    bump=h,
+                    n_steps=1,
                 )
             )
             # Independent draws: two engines with *different* seeds
@@ -2717,14 +3683,25 @@ class TestGreeksNumericalProperties:
         largest-N error is smaller in absolute terms than a loose threshold.
         """
         ref = BlackScholesModel(sigma=HULL_SIGMA).greeks(
-            HULL_S, HULL_K, HULL_T, HULL_R, 'call', HULL_Q,
-        )['delta']
+            HULL_S,
+            HULL_K,
+            HULL_T,
+            HULL_R,
+            "call",
+            HULL_Q,
+        )["delta"]
         errors = []
         for n_paths in [20_000, 100_000, 500_000]:
             mc = MonteCarloEngine(n_paths=n_paths, seed=MC_SEED)
             delta = numerical_delta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                n_steps=1,
             )
             errors.append(abs(delta - ref))
         # Monotone non-increasing (more paths never makes it worse in this seed)
@@ -2737,12 +3714,24 @@ class TestGreeksNumericalProperties:
         mc1 = MonteCarloEngine(n_paths=50_000, seed=99)
         mc2 = MonteCarloEngine(n_paths=50_000, seed=99)
         d1 = numerical_delta(
-            mc1, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+            mc1,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=1,
         )
         d2 = numerical_delta(
-            mc2, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+            mc2,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=1,
         )
         assert d1 == d2
 
@@ -2762,7 +3751,14 @@ class TestGreeksNumericalProperties:
             return paths[:, -1] ** 2
 
         gamma = numerical_gamma(
-            mc, quadratic_payoff, S, T, r, sigma, q, n_steps=1,
+            mc,
+            quadratic_payoff,
+            S,
+            T,
+            r,
+            sigma,
+            q,
+            n_steps=1,
         )
         analytical = 2.0 * np.exp((r + sigma * sigma) * T)
         assert abs(gamma - analytical) < 0.5
@@ -2781,32 +3777,50 @@ class TestGreeksOnExotics:
 
     def test_asian_call_delta_in_unit_interval(self):
         """Asian call delta is in [0, 1], strictly positive for ATM."""
-        asian = AsianOption(K=HULL_K, option_type='call')
+        asian = AsianOption(K=HULL_K, option_type="call")
         mc = _greek_engine(n_paths=200_000)
         delta = numerical_delta(
-            mc, asian.payoff,
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            asian.payoff,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
         assert 0.0 <= delta <= 1.0
         assert delta > 0.1
 
     def test_asian_call_vega_positive(self):
         """Long optionality => positive vega."""
-        asian = AsianOption(K=HULL_K, option_type='call')
+        asian = AsianOption(K=HULL_K, option_type="call")
         mc = _greek_engine(n_paths=200_000)
         vega = numerical_vega(
-            mc, asian.payoff,
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            asian.payoff,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
         assert vega > 0
 
     def test_asian_call_theta_negative(self):
         """Long call: theta is typically negative for ATM."""
-        asian = AsianOption(K=HULL_K, option_type='call')
+        asian = AsianOption(K=HULL_K, option_type="call")
         mc = _greek_engine(n_paths=200_000)
         theta = numerical_theta(
-            mc, asian.payoff,
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=GREEK_STEPS,
+            mc,
+            asian.payoff,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=GREEK_STEPS,
         )
         assert theta < 0
 
@@ -2822,23 +3836,40 @@ class TestGreeksOnExotics:
         """
         S, K, T, r, sigma, q = HULL_S, HULL_K, HULL_T, HULL_R, HULL_SIGMA, HULL_Q
         H = 10.0  # far below spot, knock-out prob is near zero
-        barrier = BarrierOption(K=K, barrier=H, barrier_type='down-and-out')
+        barrier = BarrierOption(K=K, barrier=H, barrier_type="down-and-out")
         mc = _greek_engine(n_paths=200_000)
         d_barrier = numerical_delta(
-            mc, barrier.payoff, S, T, r, sigma, q, n_steps=GREEK_STEPS,
+            mc,
+            barrier.payoff,
+            S,
+            T,
+            r,
+            sigma,
+            q,
+            n_steps=GREEK_STEPS,
         )
         d_vanilla = BlackScholesModel(sigma=sigma).greeks(
-            S, K, T, r, 'call', q,
-        )['delta']
+            S,
+            K,
+            T,
+            r,
+            "call",
+            q,
+        )["delta"]
         assert abs(d_barrier - d_vanilla) < 5e-3
 
     def test_digital_cash_call_delta_positive(self):
         """Cash-or-nothing call: probability of finishing ITM rises with S."""
-        digi = DigitalOption(K=HULL_K, option_type='call', payout_type='cash')
+        digi = DigitalOption(K=HULL_K, option_type="call", payout_type="cash")
         mc = _greek_engine(n_paths=500_000)
         delta = numerical_delta(
-            mc, digi.payoff,
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
+            mc,
+            digi.payoff,
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
             bump=0.02 * HULL_S,  # wider bump: payoff is discontinuous at K
             n_steps=1,
         )
@@ -2854,35 +3885,60 @@ class TestGreeksAPI:
     def test_returns_all_five_by_default(self):
         mc = _greek_engine(n_paths=50_000)
         result = numerical_greeks(
-            mc, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+            mc,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=1,
         )
-        assert set(result.keys()) == {'delta', 'gamma', 'vega', 'theta', 'rho'}
+        assert set(result.keys()) == {"delta", "gamma", "vega", "theta", "rho"}
         for value in result.values():
             assert isinstance(value, float)
 
     def test_subset_request(self):
         mc = _greek_engine(n_paths=50_000)
         result = numerical_greeks(
-            mc, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-            n_steps=1, greeks=['delta', 'vega'],
+            mc,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=1,
+            greeks=["delta", "vega"],
         )
-        assert set(result.keys()) == {'delta', 'vega'}
+        assert set(result.keys()) == {"delta", "vega"}
 
     def test_custom_bumps_override_default(self):
         """Custom bump for vega should propagate to the underlying call."""
         mc_default = _greek_engine(n_paths=100_000)
         mc_custom = _greek_engine(n_paths=100_000)
         v_default = numerical_vega(
-            mc_default, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+            mc_default,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=1,
         )
         v_custom = numerical_greeks(
-            mc_custom, _bs_call_payoff(HULL_K),
-            HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-            n_steps=1, greeks=['vega'], bumps={'vega': 0.02},
-        )['vega']
+            mc_custom,
+            _bs_call_payoff(HULL_K),
+            HULL_S,
+            HULL_T,
+            HULL_R,
+            HULL_SIGMA,
+            HULL_Q,
+            n_steps=1,
+            greeks=["vega"],
+            bumps={"vega": 0.02},
+        )["vega"]
         # Both should be close to the analytical vega but differ at
         # O(h^2) truncation. They must not be bit-identical.
         assert v_default != v_custom
@@ -2892,18 +3948,30 @@ class TestGreeksAPI:
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="Unknown greeks"):
             numerical_greeks(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                n_steps=1, greeks=['fakegreek'],
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                n_steps=1,
+                greeks=["fakegreek"],
             )
 
     def test_invalid_bump_key_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="Unknown bump keys"):
             numerical_greeks(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                n_steps=1, bumps={'vanna': 0.01},
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                n_steps=1,
+                bumps={"vanna": 0.01},
             )
 
 
@@ -2917,113 +3985,191 @@ class TestGreeksValidation:
         mc = MonteCarloEngine(n_paths=10_000)  # seed=None
         with pytest.raises(ValueError, match="seeded MonteCarloEngine"):
             numerical_delta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                n_steps=1,
             )
 
     def test_negative_S0_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="S0 must be > 0"):
             numerical_delta(
-                mc, _bs_call_payoff(HULL_K),
-                -100.0, HULL_T, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                -100.0,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                n_steps=1,
             )
 
     def test_negative_T_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="T must be > 0"):
             numerical_delta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, -1.0, HULL_R, HULL_SIGMA, HULL_Q, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                -1.0,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                n_steps=1,
             )
 
     def test_negative_sigma_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="sigma must be > 0"):
             numerical_delta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, -0.20, HULL_Q, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                -0.20,
+                HULL_Q,
+                n_steps=1,
             )
 
     def test_bump_too_large_for_delta_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="must be < S0"):
             numerical_delta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=HULL_S + 1, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=HULL_S + 1,
+                n_steps=1,
             )
 
     def test_bump_non_positive_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="bump must be > 0"):
             numerical_delta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=0.0, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=0.0,
+                n_steps=1,
             )
 
     def test_vega_bump_above_sigma_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="must be < sigma"):
             numerical_vega(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=HULL_SIGMA + 1e-6, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=HULL_SIGMA + 1e-6,
+                n_steps=1,
             )
 
     def test_theta_bump_above_T_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="must be < T"):
             numerical_theta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=HULL_T + 1e-6, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=HULL_T + 1e-6,
+                n_steps=1,
             )
 
     def test_gamma_bump_non_positive_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="bump must be > 0"):
             numerical_gamma(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=0.0, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=0.0,
+                n_steps=1,
             )
 
     def test_gamma_bump_above_S0_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="must be < S0"):
             numerical_gamma(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=HULL_S + 1.0, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=HULL_S + 1.0,
+                n_steps=1,
             )
 
     def test_vega_bump_non_positive_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="bump must be > 0"):
             numerical_vega(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=0.0, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=0.0,
+                n_steps=1,
             )
 
     def test_theta_bump_non_positive_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="bump must be > 0"):
             numerical_theta(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=0.0, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=0.0,
+                n_steps=1,
             )
 
     def test_rho_bump_non_positive_raises(self):
         mc = _greek_engine(n_paths=10_000)
         with pytest.raises(ValueError, match="bump must be > 0"):
             numerical_rho(
-                mc, _bs_call_payoff(HULL_K),
-                HULL_S, HULL_T, HULL_R, HULL_SIGMA, HULL_Q,
-                bump=0.0, n_steps=1,
+                mc,
+                _bs_call_payoff(HULL_K),
+                HULL_S,
+                HULL_T,
+                HULL_R,
+                HULL_SIGMA,
+                HULL_Q,
+                bump=0.0,
+                n_steps=1,
             )
 
 
@@ -3040,31 +4186,59 @@ class TestGreeksHypothesis:
     """Property-based robustness checks on random Asian calls."""
 
     @given(S=greek_spot_st, K=greek_strike_st, sigma=greek_vol_st, T=greek_time_st)
-    @settings(max_examples=15, deadline=None,
-              suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture])
+    @settings(
+        max_examples=15,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture],
+    )
     def test_asian_call_delta_in_unit_interval(
-        self, S: float, K: float, sigma: float, T: float,
+        self,
+        S: float,
+        K: float,
+        sigma: float,
+        T: float,
     ):
         """
         Random Asian calls: delta is always in [0, 1]. 15 examples is
         small but each uses 100k paths, so total work is ~1.5M paths.
         """
-        asian = AsianOption(K=K, option_type='call')
+        asian = AsianOption(K=K, option_type="call")
         mc = MonteCarloEngine(n_paths=100_000, seed=MC_SEED)
         delta = numerical_delta(
-            mc, asian.payoff, S, T, 0.05, sigma, 0.0, n_steps=64,
+            mc,
+            asian.payoff,
+            S,
+            T,
+            0.05,
+            sigma,
+            0.0,
+            n_steps=64,
         )
         assert -1e-2 <= delta <= 1.0 + 1e-2
 
     @given(S=greek_spot_st, K=greek_strike_st, sigma=greek_vol_st, T=greek_time_st)
-    @settings(max_examples=15, deadline=None,
-              suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture])
+    @settings(
+        max_examples=15,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture],
+    )
     def test_asian_call_vega_non_negative(
-        self, S: float, K: float, sigma: float, T: float,
+        self,
+        S: float,
+        K: float,
+        sigma: float,
+        T: float,
     ):
-        asian = AsianOption(K=K, option_type='call')
+        asian = AsianOption(K=K, option_type="call")
         mc = MonteCarloEngine(n_paths=100_000, seed=MC_SEED)
         vega = numerical_vega(
-            mc, asian.payoff, S, T, 0.05, sigma, 0.0, n_steps=64,
+            mc,
+            asian.payoff,
+            S,
+            T,
+            0.05,
+            sigma,
+            0.0,
+            n_steps=64,
         )
         assert vega >= -1e-2

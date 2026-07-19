@@ -9,6 +9,11 @@
 
 Production-grade derivatives pricing library implementing analytical and numerical models used in institutional quantitative finance.
 
+<p align="center">
+  <img src="docs/img/skew_power_law.png" alt="ATM skew power law: rough Bergomi vs SPX-calibrated Heston" width="640">
+</p>
+<p align="center"><em>The short-dated ATM skew power law &psi;(T) &sim; T<sup>H&minus;1/2</sup>, measured in <a href="notebooks/05_rough_bergomi_skew.ipynb">notebook 05</a>: rough Bergomi holds the straight line (fitted slope &minus;0.43, theory &minus;0.4) exactly where the SPX-calibrated Heston saturates.</em></p>
+
 ## Phase 1: Black-Scholes-Merton Analytical Engine
 
 Full implementation of the Black-Scholes-Merton (1973) model with:
@@ -77,14 +82,32 @@ Bayer-Friz-Gatheral (2016) rough volatility — the model class that reproduces 
 | 3 | Exotic options (Asian, Barrier, Lookback, Digital) | **Complete** |
 | 4 | Heston stochastic volatility + SPX calibration | **Complete** |
 | 5 | Rough Bergomi (rough volatility, hybrid scheme) | **Complete** |
-| 6 | Showcase notebooks + repository polish | Planned |
+| 6 | Showcase notebooks + repository polish | **In progress** |
+
+## Showcase notebooks
+
+Five executable notebooks in [`notebooks/`](notebooks/), each cross-checked in-cell with
+asserts (parity gaps, z-scores against closed forms, fitted slopes vs theory). They run
+offline end-to-end — no API keys, no market-data downloads.
+
+| Notebook | What it shows |
+|----------|---------------|
+| [01 — Black-Scholes & Greeks](notebooks/01_black_scholes_greeks.ipynb) | Analytical engine: Hull anchors, 16 Greeks, gamma heatmap, IV solver round-trip below 1e-9 at ~70 &mu;s per price+invert |
+| [02 — Monte Carlo & variance reduction](notebooks/02_monte_carlo_variance_reduction.ipynb) | Measured O(N<sup>&minus;1/2</sup>) convergence, antithetic/control/combined VR, scrambled Sobol QMC, importance sampling deep OTM |
+| [03 — Exotic options](notebooks/03_exotic_options.ipynb) | Asian/Barrier/Lookback/Digital vs closed forms, BGY/BGK discrete-monitoring corrections, in-out parity, numerical Greeks with CRN |
+| [04 — Heston](notebooks/04_heston_stochastic_volatility.ipynb) | Gil-Pelaez vs Carr-Madan FFT at 2.4e-7, QE simulation under Feller violation, smile family, IV surface, calibration round-trip |
+| [05 — Rough Bergomi](notebooks/05_rough_bergomi_skew.ipynb) | Hybrid vs exact Cholesky cross-validation, rough volatility paths, the skew power law vs Heston saturation |
+
+<p align="center">
+  <img src="docs/img/heston_iv_surface.png" alt="Heston implied volatility surface" width="560">
+</p>
 
 ## Quick Start
 
 ```python
 import numpy as np
-from src.models import BlackScholesModel
-from src.engines import MonteCarloEngine
+from exotic_option_pricer.models import BlackScholesModel
+from exotic_option_pricer.engines import MonteCarloEngine
 
 # Analytical pricing
 bs = BlackScholesModel(sigma=0.20)
@@ -108,7 +131,7 @@ result = mc.price_european(100, 100, 1.0, 0.05, 0.20, 'call',
 # MCResult(price=10.4494, std_error=0.0029, CI=[10.4437, 10.4551], vr='antithetic+control')
 
 # Exotic option pricing with variance reduction
-from src.instruments import AsianOption, BarrierOption, LookbackOption, DigitalOption
+from exotic_option_pricer.instruments import AsianOption, BarrierOption, LookbackOption, DigitalOption
 
 asian = AsianOption(K=100, option_type='call', avg_type='arithmetic')
 mc = MonteCarloEngine(n_paths=500_000, seed=42)
@@ -118,12 +141,12 @@ result = mc.price(asian.payoff, paths, 0.05, 1.0, control_fn=cv_fn)
 # MCResult(price=5.55, std_error=0.002, vr='control')
 
 # Numerical Greeks for any exotic
-from src.utils.greeks import numerical_greeks
+from exotic_option_pricer.utils.greeks import numerical_greeks
 greeks = numerical_greeks(mc, asian.payoff, S0=100, T=1.0, r=0.05, sigma=0.20)
 # {'delta': 0.58, 'gamma': 0.025, 'vega': 23.1, 'theta': -3.8, 'rho': 32.4}
 
 # Heston stochastic volatility (Phase 4)
-from src.models import HestonModel
+from exotic_option_pricer.models import HestonModel
 
 heston = HestonModel(v0=0.04, kappa=2.0, theta=0.04, xi=0.5, rho=-0.7)
 price = heston.price(100, 100, 1.0, 0.05, 'call')          # Fourier (Gil-Pelaez)
@@ -135,14 +158,14 @@ paths = mc.simulate_heston(100, 0.04, 1.0, 0.05,
 result = mc.price(asian.payoff, paths, 0.05, 1.0)
 
 # Calibrate to a market implied-vol surface
-from src.calibration import HestonCalibrator
+from exotic_option_pricer.calibration import HestonCalibrator
 
 cal = HestonCalibrator(S0=100.0, r=0.03, q=0.01)
 fit = cal.calibrate(strikes, maturities, market_ivs)
 # CalibrationResult(v0=0.0327, kappa=..., rho=-0.64, rmse_iv=1.3 vol pts, ...)
 
 # Rough Bergomi (Phase 5): the short-dated skew power law psi(T) ~ T^(H-1/2)
-from src.models import RoughBergomiModel
+from exotic_option_pricer.models import RoughBergomiModel
 
 rb = RoughBergomiModel(xi0=0.04, eta=1.9, H=0.1, rho=-0.9)
 price = rb.price(100, 100, 1.0, 0.05, 'call')       # conditional-BS Monte Carlo
@@ -184,7 +207,7 @@ pytest
 ## Architecture
 
 ```
-src/
+exotic_option_pricer/
 ├── models/
 │   ├── base.py              # ABC PricingModel interface
 │   ├── black_scholes.py     # BS-Merton analytical engine (16 Greeks)
