@@ -548,6 +548,102 @@ class TestQuantLibBenchmark:
 
 
 # ──────────────────────────────────────────────
+# Control-variated Gil-Pelaez quadrature
+# ──────────────────────────────────────────────
+
+
+class TestControlVariateQuadrature:
+    """
+    The Gil-Pelaez path integrates phi_j - phi_j^BS (matched total
+    variance) on a composite Gauss-Legendre grid and adds back the exact
+    N(d_j); the adaptive-quad fallback shares the same control-variated
+    integrand. These tests pin the two paths against each other and the
+    corners that used to exhaust the adaptive subdivision limit.
+    """
+
+    @pytest.mark.parametrize("params", PARITY_SETS)
+    @pytest.mark.parametrize("K,T", [(70.0, 0.2), (100.0, 1.0), (140.0, 5.0), (95.0, 0.05)])
+    def test_grid_matches_quad_fallback(self, params, K, T, monkeypatch):
+        """Same integrand, two independent quadratures: GL grid vs quad."""
+        m = make_model(**params)
+        p_grid = m.price(S0, K, T, 0.03, "call", q=0.01)
+        monkeypatch.setattr(HestonModel, "_fourier_grid", lambda self, *a, **kw: None)
+        p_quad = m.price(S0, K, T, 0.03, "call", q=0.01)
+        assert abs(p_grid - p_quad) < 1e-8
+
+    def test_extreme_corner_prices_without_warnings(self):
+        """
+        The 2026-07-17 Hypothesis corner (v0 = 0.005, xi = 1.0, T = 1/16):
+        the raw integrand's exponential tail decays at rate ~5e-3, which
+        exhausted quad's 400 subdivisions and left ~4e-7 errors. The GL
+        grid must price it warning-free with parity exact by construction.
+        """
+        m = make_model(v0=0.005, kappa=1.0, theta=0.015625, xi=1.0, rho=-0.875)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            c = m.price(S0, 50.0, 0.0625, 0.0, "call")
+            p = m.price(S0, 50.0, 0.0625, 0.0, "put")
+            m.greeks(S0, 50.0, 0.0625, 0.0, "call")
+        assert abs((c - p) - 50.0) < 1e-10
+        assert c >= 50.0 - 1e-10
+
+    def test_cv_total_variance_closed_form(self):
+        """w = theta T + (v0 - theta)(1 - e^{-kappa T})/kappa, exactly."""
+        m = make_model(**PARAMS_A)  # v0 = theta: w = v0 T with no transient
+        assert abs(m._cv_total_variance(2.0) - 0.08) < 1e-15
+        m2 = make_model(v0=0.09, kappa=0.5, theta=0.04, xi=0.3, rho=-0.5)
+        expected = 0.04 * 1.7 + (0.09 - 0.04) * (1.0 - np.exp(-0.5 * 1.7)) / 0.5
+        assert abs(m2._cv_total_variance(1.7) - expected) < 1e-15
+
+    def test_bs_control_variate_is_exact_in_bs_limit(self):
+        """
+        xi -> 0 with v0 = theta: phi_j -> phi_j^BS, the residual integral
+        vanishes and P_j collapse to N(d_j). The price must match
+        Black-Scholes far tighter than the generic 1e-6 limit tolerance —
+        this pins that the CV terms use the right measure shifts (a sign
+        error in the +-w/2 drifts would shift P1 vs P2 by ~n(d1) sqrt(w)
+        and fail by orders of magnitude).
+
+        xi = 1e-4, not smaller: the Little-Trap CF computes
+        (kappa theta/xi^2) * [cancelling terms], so its round-off noise
+        grows as eps*kappa*theta/xi^2 while the true residual shrinks as
+        xi^2 — below xi ~ 1e-4 the CF's own conditioning floor (not the
+        quadrature) dominates and the observed error RISES (measured:
+        2e-8 at xi=1e-4, 1.3e-5 at xi=1e-6).
+        """
+        m = make_model(v0=0.04, kappa=2.0, theta=0.04, xi=1e-4, rho=0.0)
+        bs = BlackScholesModel(sigma=0.20)
+        for K, opt in [(80.0, "call"), (100.0, "call"), (125.0, "put")]:
+            assert (
+                abs(
+                    m.price(S0, K, 1.0, 0.05, opt, q=0.02) - bs.price(S0, K, 1.0, 0.05, opt, q=0.02)
+                )
+                < 1e-7
+            )
+
+    def test_greeks_price_delta_share_quadrature(self, model_a):
+        """greeks() price/delta must be bit-identical to the standalone calls."""
+        strikes = np.array([80.0, 100.0, 125.0])
+        g = model_a.greeks(S0, strikes, 1.0, R_A, "put", q=Q_A)
+        np.testing.assert_array_equal(
+            g["price"], model_a.price(S0, strikes, 1.0, R_A, "put", q=Q_A)
+        )
+        np.testing.assert_array_equal(
+            g["delta"], model_a.delta(S0, strikes, 1.0, R_A, "put", q=Q_A)
+        )
+
+    def test_price_surface_cache_isolation(self, model_a):
+        """The (n_fft, eta, alpha) cache must not leak state across models."""
+        strikes = np.array([80.0, 100.0, 120.0])
+        first = model_a.price_surface(S0, strikes, 1.0, R_A, q=Q_A)
+        other = make_model(v0=0.09, kappa=1.0, theta=0.09, xi=0.8, rho=-0.3)
+        different = other.price_surface(S0, strikes, 1.0, R_A, q=Q_A)
+        again = model_a.price_surface(S0, strikes, 1.0, R_A, q=Q_A)
+        np.testing.assert_array_equal(first, again)
+        assert not np.allclose(first, different)
+
+
+# ──────────────────────────────────────────────
 # Greeks
 # ──────────────────────────────────────────────
 
@@ -1131,6 +1227,28 @@ class TestHestonCalibrator:
         ivs = cal.model_ivs(m, np.array([100.0, 100.0]), np.array([0.2, 5.0]))
         assert np.isfinite(ivs[0])
         assert np.isnan(ivs[1])
+
+    def test_model_ivs_matches_scalar_inversion(self, model_a):
+        """
+        The whole-chain batch inversion must reproduce a per-option scalar
+        FFT-price -> implied_vol loop exactly (same solver trajectory).
+        """
+        cal = HestonCalibrator(S0, R_A, Q_A)
+        strikes = np.tile(np.linspace(80.0, 120.0, 9), 3)
+        maturities = np.repeat([0.2, 1.0, 2.0], 9)
+        ivs = cal.model_ivs(model_a, strikes, maturities)
+
+        ref = np.full(strikes.shape, np.nan)
+        for T in np.unique(maturities):
+            idx = np.flatnonzero(maturities == T)
+            prices = model_a.price_surface(S0, strikes[idx], float(T), R_A, q=Q_A)
+            for j, price in zip(idx, prices):
+                ref[j] = BlackScholesModel.implied_vol(
+                    float(price), S0, float(strikes[j]), float(T), R_A, "call", q=Q_A
+                )
+        assert np.isfinite(ivs).all()
+        # 1-2 ulp: NumPy SIMD array kernels vs the scalar path
+        np.testing.assert_allclose(ivs, ref, rtol=1e-14, atol=0)
 
 
 # ──────────────────────────────────────────────

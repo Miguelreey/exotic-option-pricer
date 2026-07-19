@@ -6,8 +6,10 @@ Heston (1993) stochastic volatility model with characteristic-function pricing.
 Implements:
 - Characteristic function in the numerically stable "Little Heston Trap"
   formulation (Albrecher et al. 2007)
-- European vanilla pricing via Gil-Pelaez Fourier inversion with adaptive
-  quadrature (pointwise, robust)
+- European vanilla pricing via Gil-Pelaez Fourier inversion with a
+  Black-Scholes control variate (Andersen & Piterbarg 2010, §8.7) on a
+  vectorized composite Gauss-Legendre grid; adaptive quadrature retained
+  as a fallback for pathological corners
 - Fast strike-grid pricing via Carr-Madan (1999) FFT with Simpson weights
   (for implied vol surfaces and calibration)
 - ABC Greeks: delta and gamma exact via the differentiated characteristic
@@ -60,14 +62,18 @@ References
 .. [5] Gatheral (2006). The Volatility Surface. Wiley.
 .. [6] Andersen & Piterbarg (2007). Moment Explosions in Stochastic
        Volatility Models. Finance and Stochastics 11(1), 29-50.
+.. [7] Andersen & Piterbarg (2010). Interest Rate Modeling. Atlantic
+       Financial Press. §8.7 (Fourier integration with control variates).
 """
 
 import warnings
+from functools import lru_cache
 from typing import Callable, Dict, Union
 
 import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import CubicSpline
+from scipy.special import ndtr
 
 from .base import Numeric, PricingModel
 
@@ -75,12 +81,64 @@ from .base import Numeric, PricingModel
 # (Gil-Pelaez uses u - i, Carr-Madan uses u - (alpha+1)i)
 ComplexNumeric = Union[float, complex, np.ndarray]
 
-# Adaptive quadrature settings for Gil-Pelaez inversion. epsabs=1e-9 keeps
-# the quadrature error two orders of magnitude below the 1e-6 cross-validation
-# tolerance against Carr-Madan FFT and QuantLib. limit=400 accommodates the
-# slowly-decaying, fast-oscillating integrands of very-low-vol short-maturity
-# corners (effective support ~1/sqrt(v*T) with oscillation period 2*pi/ln(K)).
+# Adaptive quadrature settings for the Gil-Pelaez FALLBACK path (engaged
+# only when the composite Gauss-Legendre budget of _fourier_grid is
+# exceeded). epsabs=1e-9 keeps the quadrature error two orders of magnitude
+# below the 1e-6 cross-validation tolerance against Carr-Madan FFT and
+# QuantLib. limit=400 accommodates the slowly-decaying, fast-oscillating
+# integrands of very-low-vol short-maturity corners.
 _QUAD_OPTS = {"epsabs": 1e-9, "epsrel": 1e-9, "limit": 400}
+
+# Composite Gauss-Legendre rule for the vectorized Gil-Pelaez path: 16
+# nodes per panel with panels no longer than half an estimated oscillation
+# period. The high per-panel order is what buys robustness: for oscillatory
+# integrands spectral order per panel converges much faster than panel
+# subdivision, so even where the analytic phase-rate bound of
+# _fourier_grid underestimates the true oscillation severalfold the rule
+# keeps ~1e-11 accuracy (empirical worst case over the 89 QuantLib anchors
+# plus stress corners: 3e-11, vs 1.7e-6 for 8-node panels of equal length).
+_GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(16)
+# Panel budget: 8192 panels = 131k characteristic-function evaluations
+# (~ms vectorized). Corners whose oscillation x support product exceeds it
+# (Hypothesis-extreme low-vol high-xi deep strikes) fall back to `quad`.
+_MAX_PANELS = 8192
+# Envelope threshold for truncating the Fourier tail: the neglected mass is
+# bounded by _TAIL_EPS * u_max, far below the 1e-9 accuracy target of the
+# adaptive path it replaces.
+_TAIL_EPS = 1e-12
+
+
+@lru_cache(maxsize=8)
+def _carr_madan_constants(
+    n_fft: int, eta: float, alpha: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Strike- and model-independent Carr-Madan arrays for (n_fft, eta, alpha).
+
+    A calibration evaluates price_surface ~10^4 times with identical grid
+    settings; rebuilding these arrays per call was ~20-30% of its cost.
+    Returns (u grid, log-strike grid, combined FFT input weight
+    e^{iub} * simpson / denominator, damping e^{-alpha k}/pi), all marked
+    read-only so a cache hit can never be mutated by a caller.
+    """
+    u = eta * np.arange(n_fft)
+    lam = 2.0 * np.pi / (n_fft * eta)
+    b = 0.5 * n_fft * lam
+    k_grid = -b + lam * np.arange(n_fft)
+
+    # Simpson weights eta/3 * [1, 4, 2, 4, ..., 2, 4] (Carr-Madan eq. 24).
+    # The final endpoint closure is irrelevant because psi(u_max) ~ 0.
+    simpson = np.full(n_fft, eta / 3.0)
+    simpson[1::2] *= 4.0
+    simpson[2::2] *= 2.0
+
+    denominator = alpha * alpha + alpha - u * u + 1j * (2.0 * alpha + 1.0) * u
+    fft_weight = np.exp(1j * u * b) * simpson / denominator
+    damp = np.exp(-alpha * k_grid) / np.pi
+
+    for arr in (u, k_grid, fft_weight, damp):
+        arr.setflags(write=False)
+    return u, k_grid, fft_weight, damp
 
 
 class HestonModel(PricingModel):
@@ -319,69 +377,227 @@ class HestonModel(PricingModel):
         return float(np.mod(psi, 2.0 * np.pi) / delta)
 
     # ──────────────────────────────────────────────
-    # Gil-Pelaez probabilities
+    # Gil-Pelaez probabilities (BS control variate + composite Gauss-Legendre)
     # ──────────────────────────────────────────────
+
+    def _cv_total_variance(self, T: float) -> float:
+        """
+        Matched total variance of the Black-Scholes control variate:
+
+            w = E^Q[ int_0^T v_t dt ] = theta T + (v0 - theta)(1 - e^{-kappa T})/kappa
+
+        (closed-form mean of the integrated CIR variance). Matching the
+        expected integrated variance makes phi_j^BS track phi_j to leading
+        order in the vol-of-vol, so the residual integrand carries only the
+        xi- and rho-driven correction. expm1 keeps the kappa*T -> 0 limit
+        exact (-> v0 T) without cancellation.
+        """
+        return float(
+            self.theta_v * T - (self.v0 - self.theta_v) * np.expm1(-self.kappa * T) / self.kappa
+        )
+
+    def _cv_term(
+        self,
+        u: ComplexNumeric,
+        j: int,
+        S: float,
+        K: float,
+        T: float,
+        r: float,
+        q: float,
+        x: float,
+        w: float,
+    ) -> np.ndarray:
+        """
+        Control-variated Gil-Pelaez numerator on a u grid (before any pole
+        division):
+
+            e^{-iu ln K} phi_j(u) - phi_j^{BS-term}(u)
+
+        with the Black-Scholes characteristic functions of matched total
+        variance w already combined with the e^{-iu ln K} phase: under BS,
+        ln S_T is N(m - w/2, w) under Q and N(m + w/2, w) under the share
+        measure (m = ln S + (r - q)T), so with x = m - ln K
+
+            e^{-iu ln K} phi_2^BS(u) = exp( iu(x - w/2) - u^2 w/2 )
+            e^{-iu ln K} phi_1^BS(u) = exp( iu(x + w/2) - u^2 w/2 ).
+
+        j = 1 is the share-measure term (phi(u - i)/phi(-i)), j = 2 the
+        Q-measure term. phi(-i) is substituted by its exact closed form
+        S e^{(r-q)T} (true martingale, Keller-Ressel 2011) — identical to
+        char_func's special-cased value.
+        """
+        u_arr = np.asarray(u, dtype=np.float64)
+        if j == 1:
+            phi = np.asarray(self.char_func(u_arr - 1j, T, r, q, S)) / (S * np.exp((r - q) * T))
+            drift = x + 0.5 * w
+        else:
+            phi = np.asarray(self.char_func(u_arr, T, r, q, S))
+            drift = x - 0.5 * w
+        phase = np.exp(-1j * u_arr * np.log(K))
+        bs = np.exp(1j * u_arr * drift - 0.5 * w * u_arr * u_arr)
+        result: np.ndarray = phase * phi - bs
+        return result
+
+    def _fourier_grid(
+        self, S: float, T: float, r: float, q: float, x: float, w: float, *, pole: bool
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """
+        Composite Gauss-Legendre grid (nodes, weights) for the residual
+        Gil-Pelaez integrand on [0, u_max], or None when the panel budget
+        would exceed _MAX_PANELS (caller falls back to adaptive quad).
+
+        Truncation: u_max starts at the analytic estimate
+        min(sqrt(2 ln(1/eps)/w), ln(1/eps)/c_inf) — Gaussian-regime and
+        asymptotic-regime cutoffs, with c_inf = sqrt(1-rho^2)(v0 + kappa
+        theta T)/xi the Heston tail decay rate (Andersen-Piterbarg 2010) —
+        and is then VERIFIED numerically on the actual |phi_j| envelope,
+        growing by 1.5x until the envelope (with the 1/u pole decay when
+        ``pole``) sits below _TAIL_EPS at both u_max and 2 u_max. Neither
+        analytic estimate is trusted on its own: c_inf is asymptotic only
+        (it wildly overestimates decay for xi -> 0), and the Gaussian
+        cutoff underestimates the support when the slow exponential tail
+        dominates (low-vol high-xi corners).
+
+        Panel length: min(pi/omega, 1/sqrt(w), u_max/16) — at most half an
+        estimated oscillation period, no coarser than the envelope scale,
+        at least 16 panels. omega bounds the phase rate of
+        e^{-iu ln K} phi_j(u) = exp(iux + C + D v0 - iu m):
+        |x| from the moneyness rotation, w/2 from the BS drift split, and
+        the C + D v0 phase slope (kappa theta T + v0)/xi scaled by
+        |rho| + (xi - 2 kappa rho)/(2 kappa): the |rho| part is the
+        asymptotic slope from Im(a) = -rho xi u, and the second part is the
+        near-origin slope of Im(d) — from d^2 = kappa^2 +
+        iu xi(xi - 2 kappa rho) + (1-rho^2) xi^2 u^2, d(0) = kappa gives
+        Im d'(0) = xi (xi - 2 kappa rho)/(2 kappa), which dominates the
+        transition region when xi >> kappa with strongly negative rho and
+        is NOT captured by the asymptotic slope alone (the 8-node/no-Im(d)
+        first cut of this grid lost 1.7e-6 on exactly that corner of the
+        QuantLib anchor set C).
+        """
+        vol_load = (self.v0 + self.kappa * self.theta_v * T) / self.xi
+        im_d_slope = max(self.xi - 2.0 * self.kappa * self.rho_sv, 0.0) / (2.0 * self.kappa)
+        omega = abs(x) + 0.5 * w + (abs(self.rho_sv) + im_d_slope) * vol_load
+        c_inf = np.sqrt(1.0 - self.rho_sv * self.rho_sv) * vol_load
+        log_eps = -np.log(_TAIL_EPS)
+        forward = S * np.exp((r - q) * T)
+
+        u_max = float(np.clip(min(np.sqrt(2.0 * log_eps / w), log_eps / c_inf), 10.0, 1.0e7))
+        for _ in range(60):
+            probe = np.array([u_max, 2.0 * u_max])
+            env = (
+                np.abs(np.asarray(self.char_func(probe, T, r, q, S)))
+                + np.abs(np.asarray(self.char_func(probe - 1j, T, r, q, S))) / forward
+            )
+            if pole:
+                env = env / np.maximum(probe, 1.0)
+            if float(np.max(env)) < _TAIL_EPS:
+                break
+            u_max *= 1.5
+            if u_max > 1.0e8:
+                return None
+        else:
+            return None
+
+        panel_len = min(np.pi / omega, 1.0 / np.sqrt(w), u_max / 16.0)
+        n_panels = int(np.ceil(u_max / panel_len))
+        if n_panels > _MAX_PANELS:
+            return None
+
+        edges = np.linspace(0.0, u_max, n_panels + 1)
+        half = 0.5 * u_max / n_panels
+        mid = 0.5 * (edges[1:] + edges[:-1])
+        nodes = (mid[:, None] + half * _GL_NODES[None, :]).ravel()
+        weights = np.broadcast_to(half * _GL_WEIGHTS, (n_panels, _GL_WEIGHTS.size)).ravel()
+        return nodes, weights
 
     def _p1_p2(self, S: float, K: float, T: float, r: float, q: float) -> tuple[float, float]:
         """
-        Gil-Pelaez exercise probabilities P1 (share measure) and P2 (Q).
+        Gil-Pelaez exercise probabilities P1 (share measure) and P2 (Q)
+        with a Black-Scholes control variate (Andersen-Piterbarg 2010 §8.7):
 
-            P_j = 1/2 + (1/pi) int_0^inf Re[ e^{-iu ln K} phi_j(u)/(iu) ] du
+            P_j = N(d_j) + (1/pi) int_0^inf
+                      Re[ e^{-iu ln K} (phi_j(u) - phi_j^BS(u)) / (iu) ] du
 
-        phi_2(u) = phi(u); phi_1(u) = phi(u - i)/phi(-i). The integrands have
-        a removable singularity at u = 0 (the 1/(iu) pole is purely
-        imaginary; the real part has a finite limit) — Gauss-Kronrod nodes
-        never sit on the endpoint, so no special-casing is required.
+        where phi_j^BS is the BS characteristic function with total variance
+        w = E[int_0^T v_t dt] matched to the model, and N(d_j) is its exact
+        Gil-Pelaez value: under BS the probabilities ARE N(d1), N(d2) with
+        d_{1,2} = x/sqrt(w) +- sqrt(w)/2, x = ln(S/K) + (r - q)T. The
+        residual integrand is orders of magnitude smaller than the raw one
+        (the CV absorbs the bulk of the oscillatory mass), which is what
+        lets a moderate fixed grid replace adaptive quadrature.
+
+        Evaluated on the vectorized composite Gauss-Legendre grid of
+        ``_fourier_grid``; falls back to the adaptive-quad path (same
+        control-variated integrand, scalar callbacks) for corners whose
+        oscillation x support product exceeds the panel budget. The
+        integrands keep the removable singularity at u = 0 (both phi_j and
+        phi_j^BS tend to 1, so the difference vanishes linearly); neither
+        Gauss-Legendre nor Gauss-Kronrod nodes sit on the endpoint.
         """
-        log_K = np.log(K)
-        # phi(-i) = forward = S e^{(r-q)T}; kept complex (Im ~ 1e-16 noise)
-        phi_minus_i = self.char_func(-1j, T, r, q, S)
+        x = float(np.log(S / K) + (r - q) * T)
+        w = self._cv_total_variance(T)
+        sqrt_w = np.sqrt(w)
+        d1 = x / sqrt_w + 0.5 * sqrt_w
+        d2 = d1 - sqrt_w
 
-        def integrand_p2(u: float) -> float:
-            val = np.exp(-1j * u * log_K) * self.char_func(u, T, r, q, S) / (1j * u)
-            return float(val.real)
+        grid = self._fourier_grid(S, T, r, q, x, w, pole=True)
+        if grid is not None:
+            u, wts = grid
+            int_p1 = float(wts @ (self._cv_term(u, 1, S, K, T, r, q, x, w) / (1j * u)).real)
+            int_p2 = float(wts @ (self._cv_term(u, 2, S, K, T, r, q, x, w) / (1j * u)).real)
+        else:
 
-        def integrand_p1(u: float) -> float:
-            val = (
-                np.exp(-1j * u * log_K)
-                * self.char_func(u - 1j, T, r, q, S)
-                / (1j * u * phi_minus_i)
-            )
-            return float(val.real)
+            def integrand_p1(u: float) -> float:
+                return float((self._cv_term(u, 1, S, K, T, r, q, x, w) / (1j * u)).real)
 
-        int_p1, _ = quad(integrand_p1, 0.0, np.inf, **_QUAD_OPTS)
-        int_p2, _ = quad(integrand_p2, 0.0, np.inf, **_QUAD_OPTS)
+            def integrand_p2(u: float) -> float:
+                return float((self._cv_term(u, 2, S, K, T, r, q, x, w) / (1j * u)).real)
+
+            int_p1, _ = quad(integrand_p1, 0.0, np.inf, **_QUAD_OPTS)
+            int_p2, _ = quad(integrand_p2, 0.0, np.inf, **_QUAD_OPTS)
 
         # Clip pure quadrature noise (~1e-12) outside [0, 1]; genuine errors
         # are caught by the price-bound and parity tests, not masked here.
-        P1 = float(np.clip(0.5 + int_p1 / np.pi, 0.0, 1.0))
-        P2 = float(np.clip(0.5 + int_p2 / np.pi, 0.0, 1.0))
+        P1 = float(np.clip(float(ndtr(d1)) + int_p1 / np.pi, 0.0, 1.0))
+        P2 = float(np.clip(float(ndtr(d2)) + int_p2 / np.pi, 0.0, 1.0))
         return P1, P2
 
-    def _price_scalar(self, S: float, K: float, T: float, r: float, opt: str, q: float) -> float:
-        """Scalar Gil-Pelaez price. K = 0 handled without the log-K integral."""
+    def _price_delta_scalar(
+        self, S: float, K: float, T: float, r: float, opt: str, q: float
+    ) -> tuple[float, float]:
+        """
+        Scalar Gil-Pelaez (price, delta) from ONE (P1, P2) evaluation —
+        price needs both probabilities and delta = e^{-qT} P1 is a
+        byproduct, so computing them together halves the quadrature work
+        of ``greeks()``. K = 0 handled without the log-K integral.
+        """
         disc_q = np.exp(-q * T)
         disc_r = np.exp(-r * T)
         if K == 0.0:
-            # A zero-strike call pays S_T: worth the prepaid forward. A
-            # zero-strike put pays max(-S_T, 0) = 0.
-            return float(S * disc_q) if opt == "call" else 0.0
+            # A zero-strike call pays S_T: worth the prepaid forward with
+            # delta e^{-qT}. A zero-strike put pays max(-S_T, 0) = 0.
+            return (float(S * disc_q), float(disc_q)) if opt == "call" else (0.0, 0.0)
 
         P1, P2 = self._p1_p2(S, K, T, r, q)
         call = S * disc_q * P1 - K * disc_r * P2
         # Project onto the European no-arbitrage band
         # max(S e^{-qT} - K e^{-rT}, 0) <= C <= S e^{-qT}. In extreme
-        # corners (deep ITM, short T, low vol) the oscillatory integrand
-        # exhausts the quadrature subdivision limit and its ~1e-7 error can
-        # land the raw call just outside the band. Both legs derive from the
-        # projected call, so put-call parity is exact by construction;
-        # quadrature accuracy is still tested independently against the
-        # QuantLib anchors.
+        # corners (deep ITM, short T, low vol) the residual quadrature
+        # error (~1e-7 on the old adaptive path) can land the raw call just
+        # outside the band. Both legs derive from the projected call, so
+        # put-call parity is exact by construction; quadrature accuracy is
+        # still tested independently against the QuantLib anchors.
         call = min(max(call, S * disc_q - K * disc_r, 0.0), S * disc_q)
+        delta_call = disc_q * P1
         if opt == "call":
-            return float(call)
-        # Put-call parity: P = C - S e^{-qT} + K e^{-rT}
-        return float(call - S * disc_q + K * disc_r)
+            return float(call), float(delta_call)
+        # Put-call parity: P = C - S e^{-qT} + K e^{-rT}, dP/dS = delta_C - e^{-qT}
+        return float(call - S * disc_q + K * disc_r), float(delta_call - disc_q)
+
+    def _price_scalar(self, S: float, K: float, T: float, r: float, opt: str, q: float) -> float:
+        """Scalar Gil-Pelaez price. See ``_price_delta_scalar``."""
+        return self._price_delta_scalar(S, K, T, r, opt, q)[0]
 
     # ──────────────────────────────────────────────
     # Price (ABC)
@@ -418,11 +634,15 @@ class HestonModel(PricingModel):
 
         Notes
         -----
-        Array inputs are broadcast and evaluated elementwise: adaptive
-        quadrature is inherently scalar, so vectorization cannot remove the
-        per-element loop. For many strikes at a single maturity use
-        ``price_surface()`` (Carr-Madan FFT — one transform prices the whole
-        strike grid), which is what the calibrator does.
+        Array inputs are broadcast and evaluated elementwise: each element
+        gets its own control-variated Gauss-Legendre grid (truncation and
+        panel density depend on the strike and maturity), so the
+        per-element loop remains — but each element is now a handful of
+        vectorized characteristic-function evaluations instead of an
+        adaptive scalar quadrature. For many strikes at a single maturity
+        ``price_surface()`` (Carr-Madan FFT — one transform prices the
+        whole strike grid) is still the faster route and is what the
+        calibrator uses.
         """
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
@@ -539,24 +759,15 @@ class HestonModel(PricingModel):
             )
 
         # Normalized problem: spot = 1, strikes k' = ln(K/S), result * S.
-        u = eta * np.arange(n_fft)
-        lam = 2.0 * np.pi / (n_fft * eta)
-        b = 0.5 * n_fft * lam
-        k_grid = -b + lam * np.arange(n_fft)
+        # Everything that depends only on (n_fft, eta, alpha) — u grid,
+        # log-strike grid, Simpson/twiddle/denominator weight, damping —
+        # comes from the module-level cache; only the characteristic
+        # function and the FFT are per-call work.
+        u, k_grid, fft_weight, damp = _carr_madan_constants(n_fft, float(eta), float(alpha))
 
         phi_vals = self.char_func(u - (alpha + 1.0) * 1j, T, r, q, 1.0)
-        denominator = alpha * alpha + alpha - u * u + 1j * (2.0 * alpha + 1.0) * u
-        psi = np.exp(-r * T) * phi_vals / denominator
-
-        # Simpson weights eta/3 * [1, 4, 2, 4, ..., 2, 4] (Carr-Madan eq. 24).
-        # The final endpoint closure is irrelevant because psi(u_max) ~ 0.
-        simpson = np.full(n_fft, eta / 3.0)
-        simpson[1::2] *= 4.0
-        simpson[2::2] *= 2.0
-
-        fft_input = np.exp(1j * u * b) * psi * simpson
-        fft_vals = np.fft.fft(fft_input)
-        calls_grid = np.exp(-alpha * k_grid) / np.pi * fft_vals.real
+        fft_vals = np.fft.fft(np.exp(-r * T) * phi_vals * fft_weight)
+        calls_grid = damp * fft_vals.real
 
         spline = CubicSpline(k_grid, calls_grid)
         k_req = np.log(strikes_arr / S)
@@ -589,13 +800,7 @@ class HestonModel(PricingModel):
 
         (the share-measure exercise probability). Put delta via parity.
         """
-        if K == 0.0:
-            return float(np.exp(-q * T)) if opt == "call" else 0.0
-        P1, _ = self._p1_p2(S, K, T, r, q)
-        delta_call = np.exp(-q * T) * P1
-        if opt == "call":
-            return float(delta_call)
-        return float(delta_call - np.exp(-q * T))
+        return self._price_delta_scalar(S, K, T, r, opt, q)[1]
 
     def _gamma_scalar(self, S: float, K: float, T: float, r: float, q: float) -> float:
         """
@@ -606,18 +811,39 @@ class HestonModel(PricingModel):
             gamma = e^{-qT}/(pi S) int_0^inf Re[ e^{-iu ln K} phi_1(u) ] du.
 
         Same for calls and puts (parity: the linear terms vanish).
+
+        The BS control variate applies verbatim (same phi_1 - phi_1^BS
+        residual, no pole division) because the BS term has the closed form
+
+            int_0^inf Re[ e^{-iu ln K} phi_1^BS(u) ] du
+                = int_0^inf e^{-u^2 w/2} cos(u(x + w/2)) du
+                = (pi/sqrt(w)) n(d1)
+
+        (Gaussian cosine transform int_0^inf e^{-au^2} cos(bu) du =
+        (1/2) sqrt(pi/a) e^{-b^2/4a} with a = w/2, b = x + w/2 = d1
+        sqrt(w)), which reproduces the Black-Scholes gamma
+        e^{-qT} n(d1)/(S sqrt(w)) exactly.
         """
         if K == 0.0:
             return 0.0
-        log_K = np.log(K)
-        phi_minus_i = self.char_func(-1j, T, r, q, S)
+        x = float(np.log(S / K) + (r - q) * T)
+        w = self._cv_total_variance(T)
+        sqrt_w = np.sqrt(w)
+        d1 = x / sqrt_w + 0.5 * sqrt_w
+        bs_integral = np.pi / sqrt_w * np.exp(-0.5 * d1 * d1) / np.sqrt(2.0 * np.pi)
 
-        def integrand(u: float) -> float:
-            val = np.exp(-1j * u * log_K) * self.char_func(u - 1j, T, r, q, S) / phi_minus_i
-            return float(val.real)
+        grid = self._fourier_grid(S, T, r, q, x, w, pole=False)
+        if grid is not None:
+            u, wts = grid
+            integral = float(wts @ self._cv_term(u, 1, S, K, T, r, q, x, w).real)
+        else:
 
-        integral, _ = quad(integrand, 0.0, np.inf, **_QUAD_OPTS)
-        return float(np.exp(-q * T) / (np.pi * S) * integral)
+            def integrand(u: float) -> float:
+                return float(self._cv_term(u, 1, S, K, T, r, q, x, w).real)
+
+            integral, _ = quad(integrand, 0.0, np.inf, **_QUAD_OPTS)
+
+        return float(np.exp(-q * T) / (np.pi * S) * (bs_integral + integral))
 
     def _vectorize(
         self,
@@ -801,12 +1027,38 @@ class HestonModel(PricingModel):
         vega/theta/rho are central finite differences on the deterministic
         Fourier price. For Heston parameter sensitivities see
         ``model_greeks()``.
+
+        price and delta come from ONE shared (P1, P2) evaluation per
+        element (delta = e^{-qT} P1 is a byproduct of the price integrals),
+        bit-identical to calling ``price()`` and ``delta()`` separately.
         """
         self._validate_inputs(S, K, T, r)
         opt = self._validate_option_type(option_type)
+
+        S_b, K_b, T_b, r_b = np.broadcast_arrays(
+            np.asarray(S, dtype=np.float64),
+            np.asarray(K, dtype=np.float64),
+            np.asarray(T, dtype=np.float64),
+            np.asarray(r, dtype=np.float64),
+        )
+        price: Numeric
+        delta: Numeric
+        if S_b.ndim == 0:
+            price, delta = self._price_delta_scalar(
+                float(S_b), float(K_b), float(T_b), float(r_b), opt, q
+            )
+        else:
+            pairs = [
+                self._price_delta_scalar(float(s), float(k), float(t), float(rr), opt, q)
+                for s, k, t, rr in zip(S_b.ravel(), K_b.ravel(), T_b.ravel(), r_b.ravel())
+            ]
+            flat = np.asarray(pairs, dtype=np.float64)
+            price = flat[:, 0].reshape(S_b.shape)
+            delta = flat[:, 1].reshape(S_b.shape)
+
         return {
-            "price": self.price(S, K, T, r, opt, q),
-            "delta": self.delta(S, K, T, r, opt, q),
+            "price": price,
+            "delta": delta,
             "gamma": self.gamma(S, K, T, r, opt, q),
             "vega": self.vega(S, K, T, r, opt, q),
             "theta": self.theta(S, K, T, r, opt, q),
