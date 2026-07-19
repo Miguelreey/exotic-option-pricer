@@ -13,49 +13,49 @@ Production-grade derivatives pricing library implementing analytical and numeric
 
 Full implementation of the Black-Scholes-Merton (1973) model with:
 
-- **16 Greeks** â€” first-order (delta, gamma, vega, theta, rho), second-order (vanna, volga, charm, speed, zomma, color), dual (dual_delta, dual_gamma), and utilities (probability ITM, elasticity)
-- **Implied volatility solver** â€” Halley's method with cubic convergence (2-4 iterations), Brenner-Subrahmanyam initial guess, Brent fallback
-- **Continuous dividend yield** â€” Merton (1973) extension throughout all methods
-- **Vectorized computation** â€” scalar and NumPy array inputs, batch Greeks in single pass
+- **16 Greeks** — first-order (delta, gamma, vega, theta, rho), second-order (vanna, volga, charm, speed, zomma, color), dual (dual_delta, dual_gamma), and utilities (probability ITM, elasticity)
+- **Implied volatility solver** — Halley's method with cubic convergence (2-4 iterations), Brenner-Subrahmanyam initial guess, Brent fallback
+- **Continuous dividend yield** — Merton (1973) extension throughout all methods
+- **Vectorized computation** — scalar and NumPy array inputs, batch Greeks in single pass
 
 ## Phase 2: Monte Carlo Engine
 
 Production Monte Carlo engine for derivative pricing under GBM dynamics:
 
-- **3 SDE schemes** â€” exact (log-space, zero discretization error), Euler-Maruyama, Milstein (vectorized via cumsum)
-- **Variance reduction** â€” antithetic variates, control variates, importance sampling, combined (up to 98% variance reduction)
-- **Quasi-Monte Carlo** â€” scrambled Sobol sequences with O(1/N) convergence vs O(1/âˆšN) for standard MC
-- **Importance sampling** â€” optimal drift shift for deep OTM options, likelihood ratio correction (Glasserman Â§4.6)
-- **Euler absorption** â€” clamp paths at zero for non-negative processes (prepares Heston/rBergomi)
-- **Batch pricing** â€” `price_batch()` reuses simulated paths across multiple payoffs/strikes
-- **Generic payoff API** â€” `price(payoff_fn, paths)` accepts any path-dependent payoff for exotic derivatives
-- **Convergence analysis** â€” std_error vs N diagnostics with optional VR
-- **Strong convergence verified** â€” Milstein O(dt), Euler O(sqrt(dt)), tested via shared Brownian motion
-- **15 visualization functions** â€” price surfaces, Greeks panels, MC paths, convergence plots, VR comparison, exotic payoff diagrams
+- **3 SDE schemes** — exact (log-space, zero discretization error), Euler-Maruyama, Milstein (vectorized via cumsum)
+- **Variance reduction** — antithetic variates, control variates, importance sampling, combined (up to 98% variance reduction)
+- **Quasi-Monte Carlo** — scrambled Sobol sequences with O(1/N) convergence vs O(1/√N) for standard MC
+- **Importance sampling** — optimal drift shift for deep OTM options, likelihood ratio correction (Glasserman §4.6)
+- **Euler absorption** — clamp paths at zero for non-negative processes (prepares Heston/rBergomi)
+- **Batch pricing** — `price_batch()` reuses simulated paths across multiple payoffs/strikes
+- **Generic payoff API** — `price(payoff_fn, paths)` accepts any path-dependent payoff for exotic derivatives
+- **Convergence analysis** — std_error vs N diagnostics with optional VR
+- **Strong convergence verified** — Milstein O(dt), Euler O(sqrt(dt)), tested via shared Brownian motion
+- **15 visualization functions** — price surfaces, Greeks panels, MC paths, convergence plots, VR comparison, exotic payoff diagrams
 
 ## Phase 3: Exotic Options
 
 Four families of path-dependent exotic instruments with analytical closed forms and full Monte Carlo integration:
 
-- **Asian options** â€” arithmetic and geometric averaging, fixed and floating strike. Kemna-Vorst (1990) closed form for geometric. Geometric-as-control-variate for arithmetic (>95% variance reduction)
-- **Barrier options** â€” 8 types (up/down Ã— in/out Ã— call/put) with optional rebate. Reiner-Rubinstein (1991) closed form (components A-F). Broadie-Glasserman-Yor (1997) continuity correction for discrete monitoring
-- **Lookback options** â€” floating and fixed strike, call and put. Goldman-Sosin-Gatto (1979) / Conze-Viswanathan (1991) closed forms. Dedicated L'HÃ´pital branch for zero-drift case (r = q)
-- **Digital options** â€” cash-or-nothing and asset-or-nothing (4 types). Black-Scholes closed form. Vanilla decomposition identity: C = AoN_call - K Ã— CoN_call
-- **Numerical Greeks** â€” bump-and-revalue for delta, gamma, vega, theta, rho on any exotic. GBM path rescaling for delta/gamma (single simulation). Common random numbers via seed reset for vega/theta/rho
-- **ExoticOption ABC** â€” unified `payoff(paths)` interface plugging directly into `MonteCarloEngine.price()`
+- **Asian options** — arithmetic and geometric averaging, fixed and floating strike. Kemna-Vorst (1990) closed form for geometric. Geometric-as-control-variate for arithmetic (>95% variance reduction)
+- **Barrier options** — 8 types (up/down × in/out × call/put) with optional rebate. Reiner-Rubinstein (1991) closed form (components A-F). Broadie-Glasserman-Yor (1997) continuity correction for discrete monitoring
+- **Lookback options** — floating and fixed strike, call and put. Goldman-Sosin-Gatto (1979) / Conze-Viswanathan (1991) closed forms. Dedicated L'Hôpital branch for zero-drift case (r = q)
+- **Digital options** — cash-or-nothing and asset-or-nothing (4 types). Black-Scholes closed form. Vanilla decomposition identity: C = AoN_call - K × CoN_call
+- **Numerical Greeks** — bump-and-revalue for delta, gamma, vega, theta, rho on any exotic. GBM path rescaling for delta/gamma (single simulation). Common random numbers via seed reset for vega/theta/rho
+- **ExoticOption ABC** — unified `payoff(paths)` interface plugging directly into `MonteCarloEngine.price()`
 
 ## Phase 4: Heston Stochastic Volatility
 
 Heston (1993) model with semi-closed-form pricing, industry-standard simulation and live market calibration:
 
-- **Characteristic function** in the numerically stable "Little Heston Trap" formulation (Albrecher et al. 2007) â€” continuous for all maturities, with exact handling of the degenerate points u = 0, u = -i
-- **Vanilla pricing** via Gil-Pelaez Fourier inversion (adaptive quadrature, pointwise) and **Carr-Madan FFT** (whole strike grid in one transform, Simpson weights, homogeneity-normalized) â€” cross-validated to < 3e-7
-- **Moment-explosion guard** â€” closed-form explosion time T*(p) (Andersen-Piterbarg 2007) instead of a finiteness check, which the spurious analytic continuation would fool
-- **QE simulation scheme** (Andersen 2008) â€” exact CIR conditional moments, quadratic/exponential branches with mass at zero (Feller violation handled natively), martingale correction (Â§4.3.3) on by default, fully vectorized over paths
-- **Phase 3 exotics under stochastic volatility** â€” Asian/Barrier/Lookback/Digital price on Heston paths with zero code changes (`ExoticOption.payoff` is model-agnostic)
-- **Greeks** â€” delta and gamma exact via the differentiated characteristic function (no bumping); vega defined as dV/dâˆšv0; `model_greeks()` returns dV/d{v0, Îº, Î¸, Î¾, Ï}
-- **Calibration to S&P 500** â€” implied-vol-space objective, exp/tanh reparametrization, deterministic multi-start least squares, optional Feller soft penalty, parity-implied forwards per expiry, vol-time expiry sampling, liquidity filtering. Calibrated live to 1,718 SPX options across 8 expiries: RMSE 1.3 vol pts
-- **External validation** â€” 89 reference prices pinned against QuantLib's `AnalyticHestonEngine`: max deviation 1.6e-8
+- **Characteristic function** in the numerically stable "Little Heston Trap" formulation (Albrecher et al. 2007) — continuous for all maturities, with exact handling of the degenerate points u = 0, u = -i
+- **Vanilla pricing** via Gil-Pelaez Fourier inversion (adaptive quadrature, pointwise) and **Carr-Madan FFT** (whole strike grid in one transform, Simpson weights, homogeneity-normalized) — cross-validated to < 3e-7
+- **Moment-explosion guard** — closed-form explosion time T*(p) (Andersen-Piterbarg 2007) instead of a finiteness check, which the spurious analytic continuation would fool
+- **QE simulation scheme** (Andersen 2008) — exact CIR conditional moments, quadratic/exponential branches with mass at zero (Feller violation handled natively), martingale correction (§4.3.3) on by default, fully vectorized over paths
+- **Phase 3 exotics under stochastic volatility** — Asian/Barrier/Lookback/Digital price on Heston paths with zero code changes (`ExoticOption.payoff` is model-agnostic)
+- **Greeks** — delta and gamma exact via the differentiated characteristic function (no bumping); vega defined as dV/d√v0; `model_greeks()` returns dV/d{v0, κ, θ, ξ, ρ}
+- **Calibration to S&P 500** — implied-vol-space objective, exp/tanh reparametrization, deterministic multi-start least squares, optional Feller soft penalty, parity-implied forwards per expiry, vol-time expiry sampling, liquidity filtering. Calibrated live to 1,718 SPX options across 8 expiries: RMSE 1.3 vol pts
+- **External validation** — 89 reference prices pinned against QuantLib's `AnalyticHestonEngine`: max deviation 1.6e-8
 
 ## Phase 5: Rough Bergomi
 
@@ -175,8 +175,8 @@ pytest
 | `test_properties.py` | ~3,000 | 8 mathematical invariants across random parameter sets (Hypothesis) |
 | `test_benchmark.py` | 13 | 7,500-point grid vs independent reference, BS + MC throughput |
 | `test_monte_carlo.py` | 127 | GBM distributions, Euler/Milstein strong convergence, MC vs BS cross-validation, VR (antithetic+control+IS), QMC, Euler absorption, batch pricing, Q-martingale |
-| `test_exotics.py` | 240 | 4 exotic instruments: MC vs analytical cross-validation, in-out parity, AMâ‰¥GM, complementarity, vanilla decomposition, boundary conditions, Greeks vs BS, Hypothesis (6,000+ random cases) |
-| `test_heston.py` | 215 | CF anchors (Ï†(0)=1, Ï†(-i)=forward), BS limit, 89 QuantLib reference prices, Gil-Pelaez vs FFT, moment-explosion threshold, QE exact CIR moments + martingale, exotics under Heston, smile/skew, calibration round-trips, Hypothesis (~2,000 random cases) |
+| `test_exotics.py` | 240 | 4 exotic instruments: MC vs analytical cross-validation, in-out parity, AM≥GM, complementarity, vanilla decomposition, boundary conditions, Greeks vs BS, Hypothesis (6,000+ random cases) |
+| `test_heston.py` | 215 | CF anchors (φ(0)=1, φ(-i)=forward), BS limit, 89 QuantLib reference prices, Gil-Pelaez vs FFT, moment-explosion threshold, QE exact CIR moments + martingale, exotics under Heston, smile/skew, calibration round-trips, Hypothesis (~2,000 random cases) |
 | `test_rough_bergomi.py` | 126 | Volterra covariance quadrature vs exact anchors, hybrid vs exact Cholesky on prices, exact left-point martingale, BS limit (deterministic to 1e-8), skew power law T^(H-1/2) + Heston saturation contrast, exotics on rough paths, Hurst roundtrip, Hypothesis |
 | `test_strategies.py` | 10 | Straddle delta-neutrality, butterfly bounds, Greeks linearity, delta-hedge P&L |
 | `test_visualization.py` | 19 | All 15 visualization functions, exotic payoff diagrams, figure cleanup |
@@ -185,26 +185,26 @@ pytest
 
 ```
 src/
-â”œâ”€â”€ models/
-â”‚   â”œâ”€â”€ base.py              # ABC PricingModel interface
-â”‚   â”œâ”€â”€ black_scholes.py     # BS-Merton analytical engine (16 Greeks)
-â”‚   â””â”€â”€ heston.py            # Heston: Little-Trap CF, Gil-Pelaez + Carr-Madan FFT
-â”‚   â””â”€â”€ rough_bergomi.py     # Rough Bergomi: hybrid scheme + conditional MC
-â”œâ”€â”€ engines/
-â”‚   â”œâ”€â”€ monte_carlo.py       # MC engine: GBM + Heston QE simulation, generic pricing
-â”‚   â””â”€â”€ variance_reduction.py # Antithetic, control variates, importance sampling
-â”œâ”€â”€ instruments/
-â”‚   â”œâ”€â”€ base.py              # ABC ExoticOption interface
-â”‚   â”œâ”€â”€ asian.py             # Asian options: Kemna-Vorst CV, arithmetic/geometric
-â”‚   â”œâ”€â”€ barrier.py           # Barrier options: Reiner-Rubinstein, BGY correction
-â”‚   â”œâ”€â”€ lookback.py          # Lookback options: Goldman-Sosin-Gatto, L'HÃ´pital
-â”‚   â””â”€â”€ digital.py           # Digital options: cash/asset-or-nothing
-â”œâ”€â”€ utils/
-â”‚   â”œâ”€â”€ visualization.py     # 15 visualization functions
-â”‚   â””â”€â”€ greeks.py            # Numerical Greeks: bump-and-revalue, CRN, path rescaling
-â””â”€â”€ calibration/
-    â”œâ”€â”€ heston_calibrator.py # IV-space least squares, multi-start, Feller penalty
-    â””â”€â”€ market_data.py       # SPX chain download + cleaning (optional yfinance)
+├── models/
+│   ├── base.py              # ABC PricingModel interface
+│   ├── black_scholes.py     # BS-Merton analytical engine (16 Greeks)
+│   ├── heston.py            # Heston: Little-Trap CF, Gil-Pelaez + Carr-Madan FFT
+│   └── rough_bergomi.py     # Rough Bergomi: hybrid scheme + conditional MC
+├── engines/
+│   ├── monte_carlo.py       # MC engine: GBM + Heston QE simulation, generic pricing
+│   └── variance_reduction.py # Antithetic, control variates, importance sampling
+├── instruments/
+│   ├── base.py              # ABC ExoticOption interface
+│   ├── asian.py             # Asian options: Kemna-Vorst CV, arithmetic/geometric
+│   ├── barrier.py           # Barrier options: Reiner-Rubinstein, BGY correction
+│   ├── lookback.py          # Lookback options: Goldman-Sosin-Gatto, L'Hôpital
+│   └── digital.py           # Digital options: cash/asset-or-nothing
+├── utils/
+│   ├── visualization.py     # 15 visualization functions
+│   └── greeks.py            # Numerical Greeks: bump-and-revalue, CRN, path rescaling
+└── calibration/
+    ├── heston_calibrator.py # IV-space least squares, multi-start, Feller penalty
+    └── market_data.py       # SPX chain download + cleaning (optional yfinance)
 ```
 
 All pricing models inherit from `PricingModel` (abstract base class), ensuring interchangeability in portfolio valuation, calibration, and risk management.
@@ -214,18 +214,18 @@ All pricing models inherit from `PricingModel` (abstract base class), ensuring i
 | Greek | Order | Formula | Description |
 |-------|-------|---------|-------------|
 | Delta | 1st | dV/dS | Spot sensitivity |
-| Gamma | 1st | dÂ²V/dSÂ² | Delta convexity |
-| Vega | 1st | dV/dÏƒ | Volatility sensitivity |
+| Gamma | 1st | d²V/dS² | Delta convexity |
+| Vega | 1st | dV/dσ | Volatility sensitivity |
 | Theta | 1st | dV/dt | Time decay |
 | Rho | 1st | dV/dr | Rate sensitivity |
-| Vanna | 2nd | dÂ²V/(dSÂ·dÏƒ) | Delta-vol cross |
-| Volga | 2nd | dÂ²V/dÏƒÂ² | Vega convexity |
-| Charm | 2nd | dÎ”/dT | Delta decay |
-| Speed | 2nd | dÎ“/dS | Gamma sensitivity to spot |
-| Zomma | 2nd | dÎ“/dÏƒ | Gamma sensitivity to vol |
-| Color | 2nd | dÎ“/dt | Gamma decay |
+| Vanna | 2nd | d²V/(dS·dσ) | Delta-vol cross |
+| Volga | 2nd | d²V/dσ² | Vega convexity |
+| Charm | 2nd | dΔ/dT | Delta decay |
+| Speed | 2nd | dΓ/dS | Gamma sensitivity to spot |
+| Zomma | 2nd | dΓ/dσ | Gamma sensitivity to vol |
+| Color | 2nd | dΓ/dt | Gamma decay |
 | Dual Delta | Dual | dV/dK | Strike sensitivity |
-| Dual Gamma | Dual | dÂ²V/dKÂ² | Breeden-Litzenberger density |
+| Dual Gamma | Dual | d²V/dK² | Breeden-Litzenberger density |
 
 ## References
 

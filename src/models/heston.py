@@ -363,10 +363,19 @@ class HestonModel(PricingModel):
 
         P1, P2 = self._p1_p2(S, K, T, r, q)
         call = S * disc_q * P1 - K * disc_r * P2
+        # Project onto the European no-arbitrage band
+        # max(S e^{-qT} - K e^{-rT}, 0) <= C <= S e^{-qT}. In extreme
+        # corners (deep ITM, short T, low vol) the oscillatory integrand
+        # exhausts the quadrature subdivision limit and its ~1e-7 error can
+        # land the raw call just outside the band. Both legs derive from the
+        # projected call, so put-call parity is exact by construction;
+        # quadrature accuracy is still tested independently against the
+        # QuantLib anchors.
+        call = min(max(call, S * disc_q - K * disc_r, 0.0), S * disc_q)
         if opt == 'call':
-            return float(max(call, 0.0))
+            return float(call)
         # Put-call parity: P = C - S e^{-qT} + K e^{-rT}
-        return float(max(call - S * disc_q + K * disc_r, 0.0))
+        return float(call - S * disc_q + K * disc_r)
 
     # ──────────────────────────────────────────────
     # Price (ABC)
