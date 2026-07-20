@@ -650,6 +650,163 @@ class BlackScholesModel(PricingModel):
         except ValueError:
             return float("nan")
 
+    @staticmethod
+    def implied_vol_batch(
+        prices: np.ndarray,
+        S: float,
+        strikes: np.ndarray,
+        T: Numeric,
+        r: float,
+        option_type: str = "call",
+        q: float = 0.0,
+        tol: float = 1e-12,
+        max_iter: int = 20,
+    ) -> np.ndarray:
+        """
+        Vectorized implied volatilities for many (strike, maturity) points.
+
+        Follows the exact Halley trajectory of ``implied_vol`` element by
+        element: same regime-dependent initial guess, same update rule with
+        each element FROZEN the moment it converges (so extra iterations
+        for slow elements cannot perturb already-converged ones), and the
+        same Brent fallback — delegated to the scalar solver for the rare
+        elements that do not converge in ``max_iter`` Halley steps. Output
+        therefore matches a scalar loop to within 1-2 ulp (NumPy's SIMD
+        array kernels for exp/log/ndtr may round the last bit differently
+        from the scalar path), at a fraction of the cost.
+        ``T`` may be an array so an ENTIRE option chain inverts in one
+        call — this is the hot path of the Heston calibration objective,
+        and per-expiry sub-batches of ~40 options would be dominated by
+        NumPy small-array overhead rather than arithmetic.
+
+        The error contract differs from the scalar solver: prices outside
+        the no-arbitrage band (or non-finite) yield NaN instead of raising,
+        because a batch caller needs per-element failure, not
+        all-or-nothing.
+
+        Parameters
+        ----------
+        prices : np.ndarray
+            Observed option prices, same shape as ``strikes``.
+        S : float
+            Spot price.
+        strikes : np.ndarray
+            Strikes.
+        T : float or np.ndarray
+            Maturity (years), scalar or per-option array.
+        r : float
+            Risk-free rate, common to the batch.
+        option_type : str, default 'call'
+            'call' or 'put'.
+        q : float, default 0.0
+            Continuous dividend yield.
+        tol : float, default 1e-12
+            Price tolerance for convergence.
+        max_iter : int, default 20
+            Max Halley iterations before the Brent fallback.
+
+        Returns
+        -------
+        np.ndarray
+            Implied vols, same shape as the inputs; NaN where the price is
+            not invertible.
+        """
+        opt = BlackScholesModel._validate_option_type(option_type)
+        prices_a = np.asarray(prices, dtype=np.float64)
+        strikes_a = np.asarray(strikes, dtype=np.float64)
+        if prices_a.shape != strikes_a.shape:
+            raise ValueError(
+                f"prices and strikes must have the same shape, "
+                f"got {prices_a.shape} and {strikes_a.shape}"
+            )
+        shape = prices_a.shape
+        p = prices_a.ravel()
+        K = strikes_a.ravel()
+        T_a = np.broadcast_to(np.asarray(T, dtype=np.float64), shape).ravel()
+
+        disc_r = np.exp(-r * T_a)
+        disc_q = np.exp(-q * T_a)
+        sqrt_T = np.sqrt(T_a)
+
+        S_disc_q = S * disc_q
+        K_disc_r = K * disc_r
+        if opt == "call":
+            lb = np.maximum(S_disc_q - K_disc_r, 0.0)
+            ub = S_disc_q
+        else:
+            lb = np.maximum(K_disc_r - S_disc_q, 0.0)
+            ub = K_disc_r
+        valid = (p >= lb - 1e-10) & (p <= ub + 1e-10) & np.isfinite(p)
+
+        log_SK = np.where(K > 0.0, np.log(S / np.where(K > 0.0, K, 1.0)), 50.0)
+        x = log_SK + (r - q) * T_a
+
+        # Regime-dependent initial guess: Brenner-Subrahmanyam near
+        # ATM-forward, asymptotic sigma*sqrt(T) ~ sqrt(2|x|) far from it.
+        # Invalid slots get a dummy 0.2 so the vector math stays finite.
+        sigma = np.where(
+            np.abs(x) < 0.5,
+            np.sqrt(2.0 * np.pi / T_a) * p / S_disc_q,
+            np.sqrt(2.0 * np.abs(x)) / sqrt_T,
+        )
+        sigma = np.clip(np.where(valid, sigma, 0.2), 0.005, 5.0)
+
+        converged = np.zeros(p.shape, dtype=bool)
+        needs_fallback = np.zeros(p.shape, dtype=bool)
+        for _ in range(max_iter):
+            active = valid & ~converged & ~needs_fallback
+            if not np.any(active):
+                break
+            sigma_sqrt_T = sigma * sqrt_T
+            # Expression grouped exactly as in the scalar solver — any
+            # floating-point regrouping would break the bit-identical
+            # trajectory contract.
+            d1 = (log_SK + (r - q + 0.5 * sigma**2) * T_a) / sigma_sqrt_T
+            d2 = d1 - sigma_sqrt_T
+            phi_d1 = _norm_pdf(d1)
+
+            if opt == "call":
+                model_p = np.maximum(S_disc_q * ndtr(d1) - K_disc_r * ndtr(d2), 0.0)
+            else:
+                model_p = np.maximum(K_disc_r * ndtr(-d2) - S_disc_q * ndtr(-d1), 0.0)
+
+            diff = model_p - p
+            newly = active & (np.abs(diff) < tol)
+            converged |= newly
+            active &= ~newly
+
+            vega = S_disc_q * phi_d1 * sqrt_T
+            dead = active & (np.abs(vega) < 1e-300)
+            needs_fallback |= dead
+            active &= ~dead
+
+            # Halley step, damped-Newton fallback when the correction
+            # diverges — identical branch logic to the scalar solver.
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                newton = diff / vega
+                halley_denom = 1.0 - 0.5 * newton * d1 * d2 / sigma
+                step = np.where(np.abs(halley_denom) > 0.1, newton / halley_denom, 0.5 * newton)
+            sigma = np.where(active, np.clip(sigma - step, 1e-6, 10.0), sigma)
+        needs_fallback |= valid & ~converged
+
+        out = np.where(valid & converged, sigma, np.nan)
+        for i in np.flatnonzero(needs_fallback):
+            try:
+                out[i] = BlackScholesModel.implied_vol(
+                    float(p[i]),
+                    S,
+                    float(K[i]),
+                    float(T_a[i]),
+                    r,
+                    opt,
+                    q=q,
+                    tol=tol,
+                    max_iter=max_iter,
+                )
+            except ValueError:
+                out[i] = np.nan
+        return out.reshape(shape)
+
     # ──────────────────────────────────────────────
     # Batch Greeks (single-pass, avoids redundant d1/d2)
     # ──────────────────────────────────────────────

@@ -54,13 +54,13 @@ Four families of path-dependent exotic instruments with analytical closed forms 
 Heston (1993) model with semi-closed-form pricing, industry-standard simulation and live market calibration:
 
 - **Characteristic function** in the numerically stable "Little Heston Trap" formulation (Albrecher et al. 2007) — continuous for all maturities, with exact handling of the degenerate points u = 0, u = -i
-- **Vanilla pricing** via Gil-Pelaez Fourier inversion (adaptive quadrature, pointwise) and **Carr-Madan FFT** (whole strike grid in one transform, Simpson weights, homogeneity-normalized) — cross-validated to < 3e-7
+- **Vanilla pricing** via Gil-Pelaez Fourier inversion with a **Black-Scholes control variate** (matched total variance, Andersen-Piterbarg 2010) on vectorized composite Gauss-Legendre grids with a-posteriori successive-resolution error control (adaptive-quadrature fallback for pathological corners), and **Carr-Madan FFT** (whole strike grid in one transform, Simpson weights, homogeneity-normalized, cached grid constants) — methods cross-validated to < 3e-7
 - **Moment-explosion guard** — closed-form explosion time T*(p) (Andersen-Piterbarg 2007) instead of a finiteness check, which the spurious analytic continuation would fool
 - **QE simulation scheme** (Andersen 2008) — exact CIR conditional moments, quadratic/exponential branches with mass at zero (Feller violation handled natively), martingale correction (§4.3.3) on by default, fully vectorized over paths
 - **Phase 3 exotics under stochastic volatility** — Asian/Barrier/Lookback/Digital price on Heston paths with zero code changes (`ExoticOption.payoff` is model-agnostic)
 - **Greeks** — delta and gamma exact via the differentiated characteristic function (no bumping); vega defined as dV/d√v0; `model_greeks()` returns dV/d{v0, κ, θ, ξ, ρ}
 - **Calibration to S&P 500** — implied-vol-space objective, exp/tanh reparametrization, deterministic multi-start least squares, optional Feller soft penalty, parity-implied forwards per expiry, vol-time expiry sampling, liquidity filtering. Calibrated live to 1,718 SPX options across 8 expiries: RMSE 1.3 vol pts
-- **External validation** — 89 reference prices pinned against QuantLib's `AnalyticHestonEngine`: max deviation 1.6e-8
+- **External validation** — 89 reference prices pinned against QuantLib's `AnalyticHestonEngine`: max deviation 5.0e-11
 
 ## Phase 5: Rough Bergomi
 
@@ -190,19 +190,19 @@ pip install -e ".[dev]"
 pytest
 ```
 
-977 tests validate correctness through multiple independent methods:
+1,013 tests validate correctness through multiple independent methods:
 
 | Suite | Tests | What it validates |
 |-------|-------|-------------------|
-| `test_pricing.py` | 178 | Hull benchmarks, put-call parity, boundary conditions, FD Greeks, BS PDE, homogeneity, no-arbitrage bounds |
+| `test_pricing.py` | 161 | Hull benchmarks, put-call parity, boundary conditions, FD Greeks, BS PDE, homogeneity, no-arbitrage bounds, scalar + batch implied-vol solvers |
 | `test_properties.py` | ~3,000 | 8 mathematical invariants across random parameter sets (Hypothesis) |
 | `test_benchmark.py` | 13 | 7,500-point grid vs independent reference, BS + MC throughput |
-| `test_monte_carlo.py` | 127 | GBM distributions, Euler/Milstein strong convergence, MC vs BS cross-validation, VR (antithetic+control+IS), QMC, Euler absorption, batch pricing, Q-martingale |
-| `test_exotics.py` | 240 | 4 exotic instruments: MC vs analytical cross-validation, in-out parity, AM≥GM, complementarity, vanilla decomposition, boundary conditions, Greeks vs BS, Hypothesis (6,000+ random cases) |
-| `test_heston.py` | 215 | CF anchors (φ(0)=1, φ(-i)=forward), BS limit, 89 QuantLib reference prices, Gil-Pelaez vs FFT, moment-explosion threshold, QE exact CIR moments + martingale, exotics under Heston, smile/skew, calibration round-trips, Hypothesis (~2,000 random cases) |
+| `test_monte_carlo.py` | 129 | GBM distributions, Euler/Milstein strong convergence, MC vs BS cross-validation, VR (antithetic+control+IS), QMC, Euler absorption, batch pricing, Q-martingale |
+| `test_exotics.py` | 277 | 4 exotic instruments: MC vs analytical cross-validation, in-out parity, AM≥GM, complementarity, vanilla decomposition, boundary conditions, Greeks vs BS, Hypothesis (6,000+ random cases) |
+| `test_heston.py` | 239 | CF anchors (φ(0)=1, φ(-i)=forward), BS limit, 89 QuantLib reference prices, control-variated Gauss-Legendre grid vs adaptive-quad cross-checks, fast/fallback path guards, moment-explosion threshold, QE exact CIR moments + martingale, exotics under Heston, smile/skew, calibration round-trips, Hypothesis (~2,000 random cases) |
 | `test_rough_bergomi.py` | 126 | Volterra covariance quadrature vs exact anchors, hybrid vs exact Cholesky on prices, exact left-point martingale, BS limit (deterministic to 1e-8), skew power law T^(H-1/2) + Heston saturation contrast, exotics on rough paths, Hurst roundtrip, Hypothesis |
 | `test_strategies.py` | 10 | Straddle delta-neutrality, butterfly bounds, Greeks linearity, delta-hedge P&L |
-| `test_visualization.py` | 19 | All 15 visualization functions, exotic payoff diagrams, figure cleanup |
+| `test_visualization.py` | 39 | All 15 visualization functions, exotic payoff diagrams, figure cleanup |
 
 ## Architecture
 

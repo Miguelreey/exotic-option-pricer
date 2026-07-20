@@ -373,6 +373,11 @@ class TestFourierVsFFT:
             model_a.price_surface(S0, np.array([100.0]), 1.0, R_A, n_fft=1000)
         with pytest.raises(ValueError, match="alpha"):
             model_a.price_surface(S0, np.array([100.0]), 1.0, R_A, alpha=-1.0)
+        with pytest.raises(ValueError, match="eta"):
+            model_a.price_surface(S0, np.array([100.0]), 1.0, R_A, eta=0.0)
+        with pytest.raises(ValueError, match="log-moneyness outside"):
+            # ln(1e-9/100) = -25 sits far left of the FFT grid (~[-12.9, 12.9])
+            model_a.price_surface(S0, np.array([1.0e-9]), 1.0, R_A)
 
     def test_moment_explosion_guard(self):
         """
@@ -545,6 +550,180 @@ class TestQuantLibBenchmark:
         model = self._models[set_name]
         own = model.price(S0, K, T, params["r"], opt, q=params["q"])
         assert abs(own - QL_REFERENCE_PRICES[key]) < 1e-6
+
+
+# ──────────────────────────────────────────────
+# Control-variated Gil-Pelaez quadrature
+# ──────────────────────────────────────────────
+
+
+class TestControlVariateQuadrature:
+    """
+    The Gil-Pelaez path integrates phi_j - phi_j^BS (matched total
+    variance) on a composite Gauss-Legendre grid and adds back the exact
+    N(d_j); the adaptive-quad fallback shares the same control-variated
+    integrand. These tests pin the two paths against each other and the
+    corners that used to exhaust the adaptive subdivision limit.
+    """
+
+    @pytest.mark.parametrize("params", PARITY_SETS)
+    @pytest.mark.parametrize("K,T", [(70.0, 0.2), (100.0, 1.0), (140.0, 5.0), (95.0, 0.05)])
+    def test_grid_matches_quad_fallback(self, params, K, T, monkeypatch):
+        """Same integrand, two independent quadratures: GL grid vs quad."""
+        m = make_model(**params)
+        p_grid = m.price(S0, K, T, 0.03, "call", q=0.01)
+        monkeypatch.setattr(HestonModel, "_fourier_grid", lambda self, *a, **kw: None)
+        p_quad = m.price(S0, K, T, 0.03, "call", q=0.01)
+        assert abs(p_grid - p_quad) < 1e-8
+
+    def test_gamma_grid_matches_quad_fallback(self, model_a, monkeypatch):
+        """Gamma's fallback path pinned against its grid path too."""
+        g_grid = model_a.gamma(S0, 105.0, 1.0, R_A, "call", q=Q_A)
+        monkeypatch.setattr(HestonModel, "_fourier_grid", lambda self, *a, **kw: None)
+        g_quad = model_a.gamma(S0, 105.0, 1.0, R_A, "call", q=Q_A)
+        assert abs(g_grid - g_quad) < 1e-9
+
+    def test_grid_path_engages_for_standard_parameters(self):
+        """
+        Fast-path regression guard: if a future change made _fourier_grid
+        decline ordinary parameters, every price would silently take the
+        ~15x slower adaptive fallback with all accuracy tests still green.
+        Pin that the grid engages across the QuantLib anchor sets.
+        """
+        for name, p in QL_PARAM_SETS.items():
+            m = make_model(**{k: v for k, v in p.items() if k not in ("r", "q")})
+            for T in (0.2, 1.0, 5.0):
+                w = m._cv_total_variance(T)
+                for K in (70.0, 100.0, 140.0):
+                    x = float(np.log(S0 / K) + (p["r"] - p["q"]) * T)
+                    spec = m._fourier_grid(S0, T, p["r"], p["q"], x, w, pole=True)
+                    assert spec is not None, f"{name}, K={K}, T={T} fell off the grid path"
+
+    def test_fallback_engages_beyond_panel_budget(self):
+        """
+        Parameters engineered so the oscillation x support product exceeds
+        the panel budget (w ~ 2e-5 gives a very slow tail, deep strike a
+        fast phase): _fourier_grid must decline (None) and price() must
+        still return a sane value via the adaptive fallback plus the
+        no-arbitrage projection, with parity exact. These parameters sit
+        outside the Hypothesis strategy ranges, so this is the only test
+        exercising the budget escape hatch naturally.
+        """
+        m = make_model(v0=0.001, kappa=0.1, theta=0.001, xi=2.0, rho=0.0)
+        K, T = 40.0, 0.02
+        x = float(np.log(S0 / K))
+        w = m._cv_total_variance(T)
+        assert m._fourier_grid(S0, T, 0.0, 0.0, x, w, pole=True) is None
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # quad may legitimately warn here
+            c = m.price(S0, K, T, 0.0, "call")
+            p = m.price(S0, K, T, 0.0, "put")
+        assert abs((c - p) - (S0 - K)) < 1e-10
+        assert S0 - K - 1e-7 <= c <= S0
+
+    def test_resolution_check_reports_nonconvergence(self, model_a):
+        """
+        A never-agreeing integrand must come back converged=False (the
+        escape hatch to quad), not as a silently accepted wrong number.
+        sin(1e7 u) aliases on every affordable resolution.
+        """
+        _, ok = model_a._checked_gl_integrals(lambda u: (np.sin(1.0e7 * u),), 50.0, 16)
+        assert not ok
+
+    def test_ladder_exhaustion_returns_none(self, model_a, monkeypatch):
+        """
+        With an unsatisfiable tail threshold the envelope ladder must give
+        up and hand the option to the adaptive fallback instead of looping
+        forever or returning a truncated grid.
+        """
+        from exotic_option_pricer.models import heston as heston_mod
+
+        monkeypatch.setattr(heston_mod, "_TAIL_EPS", 0.0)
+        # -log(0) -> inf is intentional here: the analytic estimates blow
+        # up, the envelope can never beat a zero threshold, and the ladder
+        # must exhaust deterministically.
+        with np.errstate(divide="ignore"):
+            assert model_a._fourier_grid(S0, 1.0, R_A, Q_A, 0.0, 0.04, pole=True) is None
+
+    def test_zero_strike_greeks(self, model_a):
+        """K = 0: call delta = e^{-qT} (prepaid forward), put delta = 0,
+        gamma = 0 — handled without the log-K integral."""
+        assert model_a.delta(S0, 0.0, 1.0, R_A, "call", q=Q_A) == pytest.approx(
+            np.exp(-Q_A), abs=1e-15
+        )
+        assert model_a.delta(S0, 0.0, 1.0, R_A, "put", q=Q_A) == 0.0
+        assert model_a.gamma(S0, 0.0, 1.0, R_A, "call", q=Q_A) == 0.0
+
+    def test_extreme_corner_prices_without_warnings(self):
+        """
+        The 2026-07-17 Hypothesis corner (v0 = 0.005, xi = 1.0, T = 1/16):
+        the raw integrand's exponential tail decays at rate ~5e-3, which
+        exhausted quad's 400 subdivisions and left ~4e-7 errors. The GL
+        grid must price it warning-free with parity exact by construction.
+        """
+        m = make_model(v0=0.005, kappa=1.0, theta=0.015625, xi=1.0, rho=-0.875)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            c = m.price(S0, 50.0, 0.0625, 0.0, "call")
+            p = m.price(S0, 50.0, 0.0625, 0.0, "put")
+            m.greeks(S0, 50.0, 0.0625, 0.0, "call")
+        assert abs((c - p) - 50.0) < 1e-10
+        assert c >= 50.0 - 1e-10
+
+    def test_cv_total_variance_closed_form(self):
+        """w = theta T + (v0 - theta)(1 - e^{-kappa T})/kappa, exactly."""
+        m = make_model(**PARAMS_A)  # v0 = theta: w = v0 T with no transient
+        assert abs(m._cv_total_variance(2.0) - 0.08) < 1e-15
+        m2 = make_model(v0=0.09, kappa=0.5, theta=0.04, xi=0.3, rho=-0.5)
+        expected = 0.04 * 1.7 + (0.09 - 0.04) * (1.0 - np.exp(-0.5 * 1.7)) / 0.5
+        assert abs(m2._cv_total_variance(1.7) - expected) < 1e-15
+
+    def test_bs_control_variate_is_exact_in_bs_limit(self):
+        """
+        xi -> 0 with v0 = theta: phi_j -> phi_j^BS, the residual integral
+        vanishes and P_j collapse to N(d_j). The price must match
+        Black-Scholes far tighter than the generic 1e-6 limit tolerance —
+        this pins that the CV terms use the right measure shifts (a sign
+        error in the +-w/2 drifts would shift P1 vs P2 by ~n(d1) sqrt(w)
+        and fail by orders of magnitude).
+
+        xi = 1e-4, not smaller: the Little-Trap CF computes
+        (kappa theta/xi^2) * [cancelling terms], so its round-off noise
+        grows as eps*kappa*theta/xi^2 while the true residual shrinks as
+        xi^2 — below xi ~ 1e-4 the CF's own conditioning floor (not the
+        quadrature) dominates and the observed error RISES (measured:
+        2e-8 at xi=1e-4, 1.3e-5 at xi=1e-6).
+        """
+        m = make_model(v0=0.04, kappa=2.0, theta=0.04, xi=1e-4, rho=0.0)
+        bs = BlackScholesModel(sigma=0.20)
+        for K, opt in [(80.0, "call"), (100.0, "call"), (125.0, "put")]:
+            assert (
+                abs(
+                    m.price(S0, K, 1.0, 0.05, opt, q=0.02) - bs.price(S0, K, 1.0, 0.05, opt, q=0.02)
+                )
+                < 1e-7
+            )
+
+    def test_greeks_price_delta_share_quadrature(self, model_a):
+        """greeks() price/delta must be bit-identical to the standalone calls."""
+        strikes = np.array([80.0, 100.0, 125.0])
+        g = model_a.greeks(S0, strikes, 1.0, R_A, "put", q=Q_A)
+        np.testing.assert_array_equal(
+            g["price"], model_a.price(S0, strikes, 1.0, R_A, "put", q=Q_A)
+        )
+        np.testing.assert_array_equal(
+            g["delta"], model_a.delta(S0, strikes, 1.0, R_A, "put", q=Q_A)
+        )
+
+    def test_price_surface_cache_isolation(self, model_a):
+        """The (n_fft, eta, alpha) cache must not leak state across models."""
+        strikes = np.array([80.0, 100.0, 120.0])
+        first = model_a.price_surface(S0, strikes, 1.0, R_A, q=Q_A)
+        other = make_model(v0=0.09, kappa=1.0, theta=0.09, xi=0.8, rho=-0.3)
+        different = other.price_surface(S0, strikes, 1.0, R_A, q=Q_A)
+        again = model_a.price_surface(S0, strikes, 1.0, R_A, q=Q_A)
+        np.testing.assert_array_equal(first, again)
+        assert not np.allclose(first, different)
 
 
 # ──────────────────────────────────────────────
@@ -1131,6 +1310,28 @@ class TestHestonCalibrator:
         ivs = cal.model_ivs(m, np.array([100.0, 100.0]), np.array([0.2, 5.0]))
         assert np.isfinite(ivs[0])
         assert np.isnan(ivs[1])
+
+    def test_model_ivs_matches_scalar_inversion(self, model_a):
+        """
+        The whole-chain batch inversion must reproduce a per-option scalar
+        FFT-price -> implied_vol loop exactly (same solver trajectory).
+        """
+        cal = HestonCalibrator(S0, R_A, Q_A)
+        strikes = np.tile(np.linspace(80.0, 120.0, 9), 3)
+        maturities = np.repeat([0.2, 1.0, 2.0], 9)
+        ivs = cal.model_ivs(model_a, strikes, maturities)
+
+        ref = np.full(strikes.shape, np.nan)
+        for T in np.unique(maturities):
+            idx = np.flatnonzero(maturities == T)
+            prices = model_a.price_surface(S0, strikes[idx], float(T), R_A, q=Q_A)
+            for j, price in zip(idx, prices):
+                ref[j] = BlackScholesModel.implied_vol(
+                    float(price), S0, float(strikes[j]), float(T), R_A, "call", q=Q_A
+                )
+        assert np.isfinite(ivs).all()
+        # 1-2 ulp: NumPy SIMD array kernels vs the scalar path
+        np.testing.assert_allclose(ivs, ref, rtol=1e-14, atol=0)
 
 
 # ──────────────────────────────────────────────

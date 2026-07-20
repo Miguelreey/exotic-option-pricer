@@ -581,6 +581,96 @@ class TestImpliedVol:
 
 
 # ============================================================================
+# 13b. Vectorized Implied Volatility (batch solver)
+# ============================================================================
+class TestImpliedVolBatch:
+    """
+    implied_vol_batch must be indistinguishable from an elementwise scalar
+    implied_vol loop — same Halley trajectory with frozen-on-convergence
+    updates and delegated Brent fallback — with NaN (not an exception) for
+    unpriceable prices. It is the hot path of the Heston calibration
+    objective.
+
+    Agreement tolerance is 1-2 ulp, not bitwise zero: NumPy's array
+    transcendental kernels (SIMD) may round the last bit differently from
+    the scalar code path, so isolated elements can differ by one ulp even
+    with an identical operation sequence.
+    """
+
+    S, R, Q = 100.0, 0.05, 0.02
+
+    @staticmethod
+    def _scalar_reference(prices, S, strikes, maturities, r, opt, q):
+        out = np.empty(len(prices))
+        for i, (p, k, t) in enumerate(zip(prices, strikes, maturities)):
+            try:
+                out[i] = BlackScholesModel.implied_vol(float(p), S, float(k), float(t), r, opt, q=q)
+            except ValueError:
+                out[i] = np.nan
+        return out
+
+    @pytest.mark.parametrize("opt", ["call", "put"])
+    @pytest.mark.parametrize("sigma", [0.01, 0.20, 0.80, 2.0])
+    def test_matches_scalar_across_chain(self, opt, sigma):
+        """Wide strike x maturity chain, identical to the scalar solver."""
+        bs = BlackScholesModel(sigma=sigma)
+        K, T = (a.ravel() for a in np.meshgrid(np.linspace(40.0, 250.0, 22), [0.05, 0.5, 2.0]))
+        prices = bs.price(self.S, K, T, self.R, opt, q=self.Q)
+        batch = BlackScholesModel.implied_vol_batch(prices, self.S, K, T, self.R, opt, q=self.Q)
+        ref = self._scalar_reference(prices, self.S, K, T, self.R, opt, self.Q)
+        np.testing.assert_array_equal(np.isnan(batch), np.isnan(ref))
+        mask = np.isfinite(ref)
+        assert mask.sum() > 50  # the chain must be mostly invertible
+        np.testing.assert_allclose(batch[mask], ref[mask], rtol=1e-14, atol=0)
+
+    def test_nan_isolation_for_unpriceable_prices(self):
+        """Poisoned entries go NaN without contaminating their neighbors."""
+        bs = BlackScholesModel(sigma=0.25)
+        K = np.linspace(80.0, 120.0, 9)
+        prices = np.asarray(bs.price(self.S, K, 1.0, self.R, "call", q=self.Q))
+        clean = BlackScholesModel.implied_vol_batch(
+            prices, self.S, K, 1.0, self.R, "call", q=self.Q
+        )
+        poisoned = prices.copy()
+        poisoned[2] = -0.5  # below no-arbitrage floor
+        poisoned[4] = 150.0  # above S e^{-qT}
+        poisoned[6] = np.nan
+        out = BlackScholesModel.implied_vol_batch(
+            poisoned, self.S, K, 1.0, self.R, "call", q=self.Q
+        )
+        assert np.isnan(out[[2, 4, 6]]).all()
+        keep = [0, 1, 3, 5, 7, 8]
+        np.testing.assert_allclose(out[keep], clean[keep], rtol=0, atol=0)
+
+    def test_scalar_maturity_broadcasts(self):
+        bs = BlackScholesModel(sigma=0.30)
+        K = np.linspace(70.0, 130.0, 7)
+        prices = np.asarray(bs.price(self.S, K, 0.75, self.R, "put", q=self.Q))
+        scalar_T = BlackScholesModel.implied_vol_batch(
+            prices, self.S, K, 0.75, self.R, "put", q=self.Q
+        )
+        array_T = BlackScholesModel.implied_vol_batch(
+            prices, self.S, K, np.full(7, 0.75), self.R, "put", q=self.Q
+        )
+        np.testing.assert_allclose(scalar_T, array_T, rtol=0, atol=0)
+        np.testing.assert_allclose(scalar_T, 0.30, rtol=0, atol=1e-8)
+
+    def test_shape_mismatch_raises(self):
+        with pytest.raises(ValueError, match="same shape"):
+            BlackScholesModel.implied_vol_batch(
+                np.array([1.0, 2.0]), self.S, np.array([100.0]), 1.0, self.R
+            )
+
+    def test_preserves_2d_shape(self):
+        bs = BlackScholesModel(sigma=0.20)
+        K = np.array([[90.0, 100.0], [110.0, 120.0]])
+        prices = np.asarray(bs.price(self.S, K, 1.0, self.R, "call", q=self.Q))
+        out = BlackScholesModel.implied_vol_batch(prices, self.S, K, 1.0, self.R, "call", q=self.Q)
+        assert out.shape == (2, 2)
+        np.testing.assert_allclose(out, 0.20, rtol=0, atol=1e-8)
+
+
+# ============================================================================
 # 14. Second-Order Greeks (Finite Difference)
 # ============================================================================
 class TestSecondOrderGreeks:

@@ -233,6 +233,19 @@ class HestonCalibrator:
     # Model implied vols
     # ──────────────────────────────────────────────
 
+    @staticmethod
+    def _maturity_groups(maturities: np.ndarray) -> list[tuple[float, np.ndarray]]:
+        """
+        (maturity, option indices) pairs for one FFT call per expiry.
+
+        Split out from ``model_ivs`` so ``calibrate`` computes the grouping
+        ONCE instead of re-running np.unique + index scans inside every one
+        of the ~10^3-10^4 objective evaluations (the maturities never change
+        during a fit). Exact float equality is safe: the group keys come
+        from np.unique of the very same array being matched.
+        """
+        return [(float(T), np.flatnonzero(maturities == T)) for T in np.unique(maturities)]
+
     def model_ivs(
         self, model: HestonModel, strikes: np.ndarray, maturities: np.ndarray
     ) -> np.ndarray:
@@ -241,8 +254,11 @@ class HestonCalibrator:
 
         Options are grouped by maturity so each group is priced with ONE
         Carr-Madan FFT (the whole point of the FFT route: an objective
-        evaluation needs the entire chain), then inverted to implied vol
-        with the Phase 1 Halley solver.
+        evaluation needs the entire chain), then the WHOLE chain is
+        inverted to implied vol in a single call to the vectorized Phase 1
+        Halley solver (``BlackScholesModel.implied_vol_batch`` with
+        per-option maturities — per-expiry sub-batches would be dominated
+        by NumPy small-array overhead).
 
         Returns
         -------
@@ -252,36 +268,32 @@ class HestonCalibrator:
         """
         strikes = np.asarray(strikes, dtype=np.float64)
         maturities = np.asarray(maturities, dtype=np.float64)
-        ivs = np.full(strikes.shape, np.nan)
+        return self._model_ivs_grouped(model, strikes, self._maturity_groups(maturities))
 
-        for T in np.unique(maturities):
-            idx = np.flatnonzero(maturities == T)
+    def _model_ivs_grouped(
+        self,
+        model: HestonModel,
+        strikes: np.ndarray,
+        groups: list[tuple[float, np.ndarray]],
+    ) -> np.ndarray:
+        """``model_ivs`` core with the maturity grouping precomputed."""
+        prices = np.full(strikes.shape, np.nan)
+        maturities = np.empty(strikes.shape)
+        for T, idx in groups:
+            maturities[idx] = T
             try:
-                prices = model.price_surface(
+                prices[idx] = model.price_surface(
                     self.S0,
                     strikes[idx],
-                    float(T),
+                    T,
                     self.r,
                     q=self.q,
                 )
             except ValueError:
-                continue  # moment explosion at this T: leave NaN
-            for j, price in zip(idx, prices):
-                try:
-                    iv = BlackScholesModel.implied_vol(
-                        float(price),
-                        self.S0,
-                        float(strikes[j]),
-                        float(T),
-                        self.r,
-                        "call",
-                        q=self.q,
-                    )
-                except ValueError:
-                    continue
-                if np.isfinite(iv):
-                    ivs[j] = iv
-        return ivs
+                continue  # moment explosion at this T: prices stay NaN -> IV NaN
+        return BlackScholesModel.implied_vol_batch(
+            prices, self.S0, strikes, maturities, self.r, "call", q=self.q
+        )
 
     # ──────────────────────────────────────────────
     # Calibration
@@ -388,12 +400,16 @@ class HestonCalibrator:
         if feller_penalty < 0:
             raise ValueError(f"feller_penalty must be >= 0, got {feller_penalty}")
 
+        # Grouping is invariant across the fit: compute it once, not per
+        # objective evaluation.
+        groups = self._maturity_groups(maturities)
+
         def residuals(x: np.ndarray) -> np.ndarray:
             params = self._to_params(x)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
                 model = HestonModel(**params)
-            ivs = self.model_ivs(model, strikes, maturities)
+            ivs = self._model_ivs_grouped(model, strikes, groups)
             res = np.where(np.isnan(ivs), _PENALTY_RESIDUAL, w * (ivs - market_ivs))
             if feller_penalty > 0.0:
                 violation = max(
@@ -425,7 +441,7 @@ class HestonCalibrator:
             warnings.simplefilter("ignore", UserWarning)
             model = HestonModel(**params)
 
-        fitted_ivs = self.model_ivs(model, strikes, maturities)
+        fitted_ivs = self._model_ivs_grouped(model, strikes, groups)
         valid = ~np.isnan(fitted_ivs)
         if not np.any(valid):
             raise ValueError(
