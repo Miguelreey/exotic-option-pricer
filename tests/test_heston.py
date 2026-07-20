@@ -373,6 +373,11 @@ class TestFourierVsFFT:
             model_a.price_surface(S0, np.array([100.0]), 1.0, R_A, n_fft=1000)
         with pytest.raises(ValueError, match="alpha"):
             model_a.price_surface(S0, np.array([100.0]), 1.0, R_A, alpha=-1.0)
+        with pytest.raises(ValueError, match="eta"):
+            model_a.price_surface(S0, np.array([100.0]), 1.0, R_A, eta=0.0)
+        with pytest.raises(ValueError, match="log-moneyness outside"):
+            # ln(1e-9/100) = -25 sits far left of the FFT grid (~[-12.9, 12.9])
+            model_a.price_surface(S0, np.array([1.0e-9]), 1.0, R_A)
 
     def test_moment_explosion_guard(self):
         """
@@ -570,6 +575,84 @@ class TestControlVariateQuadrature:
         monkeypatch.setattr(HestonModel, "_fourier_grid", lambda self, *a, **kw: None)
         p_quad = m.price(S0, K, T, 0.03, "call", q=0.01)
         assert abs(p_grid - p_quad) < 1e-8
+
+    def test_gamma_grid_matches_quad_fallback(self, model_a, monkeypatch):
+        """Gamma's fallback path pinned against its grid path too."""
+        g_grid = model_a.gamma(S0, 105.0, 1.0, R_A, "call", q=Q_A)
+        monkeypatch.setattr(HestonModel, "_fourier_grid", lambda self, *a, **kw: None)
+        g_quad = model_a.gamma(S0, 105.0, 1.0, R_A, "call", q=Q_A)
+        assert abs(g_grid - g_quad) < 1e-9
+
+    def test_grid_path_engages_for_standard_parameters(self):
+        """
+        Fast-path regression guard: if a future change made _fourier_grid
+        decline ordinary parameters, every price would silently take the
+        ~15x slower adaptive fallback with all accuracy tests still green.
+        Pin that the grid engages across the QuantLib anchor sets.
+        """
+        for name, p in QL_PARAM_SETS.items():
+            m = make_model(**{k: v for k, v in p.items() if k not in ("r", "q")})
+            for T in (0.2, 1.0, 5.0):
+                w = m._cv_total_variance(T)
+                for K in (70.0, 100.0, 140.0):
+                    x = float(np.log(S0 / K) + (p["r"] - p["q"]) * T)
+                    spec = m._fourier_grid(S0, T, p["r"], p["q"], x, w, pole=True)
+                    assert spec is not None, f"{name}, K={K}, T={T} fell off the grid path"
+
+    def test_fallback_engages_beyond_panel_budget(self):
+        """
+        Parameters engineered so the oscillation x support product exceeds
+        the panel budget (w ~ 2e-5 gives a very slow tail, deep strike a
+        fast phase): _fourier_grid must decline (None) and price() must
+        still return a sane value via the adaptive fallback plus the
+        no-arbitrage projection, with parity exact. These parameters sit
+        outside the Hypothesis strategy ranges, so this is the only test
+        exercising the budget escape hatch naturally.
+        """
+        m = make_model(v0=0.001, kappa=0.1, theta=0.001, xi=2.0, rho=0.0)
+        K, T = 40.0, 0.02
+        x = float(np.log(S0 / K))
+        w = m._cv_total_variance(T)
+        assert m._fourier_grid(S0, T, 0.0, 0.0, x, w, pole=True) is None
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # quad may legitimately warn here
+            c = m.price(S0, K, T, 0.0, "call")
+            p = m.price(S0, K, T, 0.0, "put")
+        assert abs((c - p) - (S0 - K)) < 1e-10
+        assert S0 - K - 1e-7 <= c <= S0
+
+    def test_resolution_check_reports_nonconvergence(self, model_a):
+        """
+        A never-agreeing integrand must come back converged=False (the
+        escape hatch to quad), not as a silently accepted wrong number.
+        sin(1e7 u) aliases on every affordable resolution.
+        """
+        _, ok = model_a._checked_gl_integrals(lambda u: (np.sin(1.0e7 * u),), 50.0, 16)
+        assert not ok
+
+    def test_ladder_exhaustion_returns_none(self, model_a, monkeypatch):
+        """
+        With an unsatisfiable tail threshold the envelope ladder must give
+        up and hand the option to the adaptive fallback instead of looping
+        forever or returning a truncated grid.
+        """
+        from exotic_option_pricer.models import heston as heston_mod
+
+        monkeypatch.setattr(heston_mod, "_TAIL_EPS", 0.0)
+        # -log(0) -> inf is intentional here: the analytic estimates blow
+        # up, the envelope can never beat a zero threshold, and the ladder
+        # must exhaust deterministically.
+        with np.errstate(divide="ignore"):
+            assert model_a._fourier_grid(S0, 1.0, R_A, Q_A, 0.0, 0.04, pole=True) is None
+
+    def test_zero_strike_greeks(self, model_a):
+        """K = 0: call delta = e^{-qT} (prepaid forward), put delta = 0,
+        gamma = 0 — handled without the log-K integral."""
+        assert model_a.delta(S0, 0.0, 1.0, R_A, "call", q=Q_A) == pytest.approx(
+            np.exp(-Q_A), abs=1e-15
+        )
+        assert model_a.delta(S0, 0.0, 1.0, R_A, "put", q=Q_A) == 0.0
+        assert model_a.gamma(S0, 0.0, 1.0, R_A, "call", q=Q_A) == 0.0
 
     def test_extreme_corner_prices_without_warnings(self):
         """

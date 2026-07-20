@@ -8,8 +8,9 @@ Implements:
   formulation (Albrecher et al. 2007)
 - European vanilla pricing via Gil-Pelaez Fourier inversion with a
   Black-Scholes control variate (Andersen & Piterbarg 2010, §8.7) on a
-  vectorized composite Gauss-Legendre grid; adaptive quadrature retained
-  as a fallback for pathological corners
+  vectorized composite Gauss-Legendre grid with a-posteriori
+  successive-resolution error control; adaptive quadrature retained as a
+  fallback for pathological corners
 - Fast strike-grid pricing via Carr-Madan (1999) FFT with Simpson weights
   (for implied vol surfaces and calibration)
 - ABC Greeks: delta and gamma exact via the differentiated characteristic
@@ -106,6 +107,15 @@ _MAX_PANELS = 8192
 # bounded by _TAIL_EPS * u_max, far below the 1e-9 accuracy target of the
 # adaptive path it replaces.
 _TAIL_EPS = 1e-12
+# A-posteriori acceptance tolerance for the Gauss-Legendre integrals: the
+# result at n panels is accepted only if it agrees with the next-coarser
+# resolution to this absolute tolerance, otherwise the panel count doubles
+# (up to _MAX_PANELS, then adaptive-quad fallback). The analytic phase-rate
+# bound omega is a heuristic — this check makes accuracy self-certifying
+# instead of trusted. 1e-10 on the integral maps to ~S*1e-10/pi ~ 3e-9 on
+# the price, matching the accuracy target; typical inter-resolution
+# agreement is ~1e-12, so escalation only triggers in genuine corners.
+_GL_CHECK_TOL = 1e-10
 
 
 @lru_cache(maxsize=8)
@@ -439,13 +449,66 @@ class HestonModel(PricingModel):
         result: np.ndarray = phase * phi - bs
         return result
 
+    @staticmethod
+    def _panel_nodes(u_max: float, n_panels: int) -> tuple[np.ndarray, np.ndarray]:
+        """Nodes and weights of the composite 16-node GL rule on [0, u_max]."""
+        edges = np.linspace(0.0, u_max, n_panels + 1)
+        half = 0.5 * u_max / n_panels
+        mid = 0.5 * (edges[1:] + edges[:-1])
+        nodes = (mid[:, None] + half * _GL_NODES[None, :]).ravel()
+        weights = np.broadcast_to(half * _GL_WEIGHTS, (n_panels, _GL_WEIGHTS.size)).ravel()
+        return nodes, weights
+
+    def _checked_gl_integrals(
+        self,
+        integrands: Callable[[np.ndarray], tuple[np.ndarray, ...]],
+        u_max: float,
+        n_panels: int,
+    ) -> tuple[tuple[float, ...], bool]:
+        """
+        Composite GL integrals with a-posteriori error control: integrate
+        ``integrands`` (a callable returning one row per integral, evaluated
+        on a shared node array) at half resolution and at n_panels, accept
+        the finer result when every integral agrees across resolutions to
+        _GL_CHECK_TOL, otherwise keep doubling the panel count up to
+        _MAX_PANELS. Returns (integrals, converged); on non-convergence the
+        caller must fall back to adaptive quad.
+
+        Rationale: the omega phase-rate bound sizing n_panels is heuristic
+        (its Im(d) transition term was added after an empirical miss), so
+        the grid must not be trusted blindly — successive-resolution
+        agreement is the standard practical error estimate for spectral
+        panel rules, and the two grids share no nodes (GL nodes do not
+        nest), making a common aliasing failure across both resolutions
+        implausible. Happy-path cost is 1.5x (half grid + full grid);
+        corners that escalate get a strictly better answer than the
+        unchecked rule returned.
+        """
+
+        def integrate(n: int) -> tuple[float, ...]:
+            u, wts = self._panel_nodes(u_max, n)
+            return tuple(float(wts @ row) for row in integrands(u))
+
+        prev = integrate(max(n_panels // 2, 8))
+        n = n_panels
+        while n <= _MAX_PANELS:
+            cur = integrate(n)
+            if all(abs(c - p) < _GL_CHECK_TOL for c, p in zip(cur, prev)):
+                return cur, True
+            prev = cur
+            n *= 2
+        return prev, False
+
     def _fourier_grid(
         self, S: float, T: float, r: float, q: float, x: float, w: float, *, pole: bool
-    ) -> tuple[np.ndarray, np.ndarray] | None:
+    ) -> tuple[float, int] | None:
         """
-        Composite Gauss-Legendre grid (nodes, weights) for the residual
+        Domain and panel count (u_max, n_panels) for the residual
         Gil-Pelaez integrand on [0, u_max], or None when the panel budget
         would exceed _MAX_PANELS (caller falls back to adaptive quad).
+        Node construction lives in ``_panel_nodes`` so the a-posteriori
+        check of ``_checked_gl_integrals`` can rebuild the rule at other
+        resolutions.
 
         Truncation: u_max starts at the analytic estimate
         min(sqrt(2 ln(1/eps)/w), ln(1/eps)/c_inf) — Gaussian-regime and
@@ -482,8 +545,11 @@ class HestonModel(PricingModel):
         log_eps = -np.log(_TAIL_EPS)
         forward = S * np.exp((r - q) * T)
 
+        # Terminates: u_max grows monotonically by 1.5x from >= 10, so the
+        # 1e8 escape fires within ~40 iterations if the envelope never
+        # drops below threshold.
         u_max = float(np.clip(min(np.sqrt(2.0 * log_eps / w), log_eps / c_inf), 10.0, 1.0e7))
-        for _ in range(60):
+        while True:
             probe = np.array([u_max, 2.0 * u_max])
             env = (
                 np.abs(np.asarray(self.char_func(probe, T, r, q, S)))
@@ -496,20 +562,12 @@ class HestonModel(PricingModel):
             u_max *= 1.5
             if u_max > 1.0e8:
                 return None
-        else:
-            return None
 
         panel_len = min(np.pi / omega, 1.0 / np.sqrt(w), u_max / 16.0)
         n_panels = int(np.ceil(u_max / panel_len))
         if n_panels > _MAX_PANELS:
             return None
-
-        edges = np.linspace(0.0, u_max, n_panels + 1)
-        half = 0.5 * u_max / n_panels
-        mid = 0.5 * (edges[1:] + edges[:-1])
-        nodes = (mid[:, None] + half * _GL_NODES[None, :]).ravel()
-        weights = np.broadcast_to(half * _GL_WEIGHTS, (n_panels, _GL_WEIGHTS.size)).ravel()
-        return nodes, weights
+        return u_max, n_panels
 
     def _p1_p2(self, S: float, K: float, T: float, r: float, q: float) -> tuple[float, float]:
         """
@@ -528,9 +586,11 @@ class HestonModel(PricingModel):
         lets a moderate fixed grid replace adaptive quadrature.
 
         Evaluated on the vectorized composite Gauss-Legendre grid of
-        ``_fourier_grid``; falls back to the adaptive-quad path (same
-        control-variated integrand, scalar callbacks) for corners whose
-        oscillation x support product exceeds the panel budget. The
+        ``_fourier_grid`` with the successive-resolution error control of
+        ``_checked_gl_integrals`` (both integrals share one node array per
+        resolution); falls back to the adaptive-quad path (same
+        control-variated integrand, scalar callbacks) when the panel budget
+        is exceeded up front or the resolution check never converges. The
         integrands keep the removable singularity at u = 0 (both phi_j and
         phi_j^BS tend to 1, so the difference vanishes linearly); neither
         Gauss-Legendre nor Gauss-Kronrod nodes sit on the endpoint.
@@ -541,12 +601,19 @@ class HestonModel(PricingModel):
         d1 = x / sqrt_w + 0.5 * sqrt_w
         d2 = d1 - sqrt_w
 
-        grid = self._fourier_grid(S, T, r, q, x, w, pole=True)
-        if grid is not None:
-            u, wts = grid
-            int_p1 = float(wts @ (self._cv_term(u, 1, S, K, T, r, q, x, w) / (1j * u)).real)
-            int_p2 = float(wts @ (self._cv_term(u, 2, S, K, T, r, q, x, w) / (1j * u)).real)
-        else:
+        converged = False
+        spec = self._fourier_grid(S, T, r, q, x, w, pole=True)
+        if spec is not None:
+
+            def integrands(u: np.ndarray) -> tuple[np.ndarray, ...]:
+                iu = 1j * u
+                return (
+                    (self._cv_term(u, 1, S, K, T, r, q, x, w) / iu).real,
+                    (self._cv_term(u, 2, S, K, T, r, q, x, w) / iu).real,
+                )
+
+            (int_p1, int_p2), converged = self._checked_gl_integrals(integrands, *spec)
+        if not converged:
 
             def integrand_p1(u: float) -> float:
                 return float((self._cv_term(u, 1, S, K, T, r, q, x, w) / (1j * u)).real)
@@ -832,11 +899,15 @@ class HestonModel(PricingModel):
         d1 = x / sqrt_w + 0.5 * sqrt_w
         bs_integral = np.pi / sqrt_w * np.exp(-0.5 * d1 * d1) / np.sqrt(2.0 * np.pi)
 
-        grid = self._fourier_grid(S, T, r, q, x, w, pole=False)
-        if grid is not None:
-            u, wts = grid
-            integral = float(wts @ self._cv_term(u, 1, S, K, T, r, q, x, w).real)
-        else:
+        converged = False
+        spec = self._fourier_grid(S, T, r, q, x, w, pole=False)
+        if spec is not None:
+
+            def integrands(u: np.ndarray) -> tuple[np.ndarray, ...]:
+                return (self._cv_term(u, 1, S, K, T, r, q, x, w).real,)
+
+            (integral,), converged = self._checked_gl_integrals(integrands, *spec)
+        if not converged:
 
             def integrand(u: float) -> float:
                 return float(self._cv_term(u, 1, S, K, T, r, q, x, w).real)
