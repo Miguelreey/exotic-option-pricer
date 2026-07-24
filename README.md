@@ -276,6 +276,13 @@ All pricing models inherit from `PricingModel` (abstract base class), ensuring i
 - Gatheral, Jaisson & Rosenbaum (2018). *Volatility is Rough.* Quant. Finance 18(6).
 - Fukasawa (2011). *Asymptotic Analysis for Stochastic Volatility: Martingale Expansion.* Finance & Stochastics 15.
 
+## AI assistance
+
+AI tooling was used to assist development, notably in building out the test suite —
+property-based invariants (Hypothesis), benchmark grids, and the cross-validation
+harnesses against QuantLib and literature values. Models, derivations, and design
+decisions were reviewed and validated by the author against the references below.
+
 ## License
 
 MIT
