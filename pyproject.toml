@@ -80,6 +80,9 @@ addopts = "-v --tb=short"
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+# Lint scope = library + tests, matching CI. Notebooks need the sys.path
+# bootstrap before imports (E402) and keep exploratory formatting.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
