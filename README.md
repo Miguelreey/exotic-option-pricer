@@ -82,7 +82,7 @@ Bayer-Friz-Gatheral (2016) rough volatility — the model class that reproduces 
 | 3 | Exotic options (Asian, Barrier, Lookback, Digital) | **Complete** |
 | 4 | Heston stochastic volatility + SPX calibration | **Complete** |
 | 5 | Rough Bergomi (rough volatility, hybrid scheme) | **Complete** |
-| 6 | Showcase notebooks + repository polish | **In progress** |
+| 6 | Showcase notebooks + repository polish | **Complete** |
 
 ## Showcase notebooks
 
