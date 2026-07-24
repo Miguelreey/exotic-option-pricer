@@ -162,7 +162,7 @@ _DRIFT_EPS: float = 1e-10
 
 # Broadie-Glasserman-Kou (1997) discrete-monitoring constant
 # beta = -zeta(1/2) / sqrt(2*pi). Same constant as barrier options.
-_BGY_BETA: float = 0.5826
+_BGK_BETA: float = 0.5826
 
 
 def _norm_pdf(x: float) -> float:
@@ -816,7 +816,7 @@ class LookbackOption(ExoticOption):
             raise ValueError("extremum must be > 0 elementwise")
 
         sign = 1.0 if k == "max" else -1.0
-        adjusted = ext * np.exp(sign * _BGY_BETA * sigma * np.sqrt(dt))
+        adjusted = ext * np.exp(sign * _BGK_BETA * sigma * np.sqrt(dt))
         return float(adjusted) if adjusted.ndim == 0 else adjusted
 
     def __repr__(self) -> str:

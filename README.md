@@ -10,9 +10,20 @@
 Production-grade derivatives pricing library implementing analytical and numerical models used in institutional quantitative finance.
 
 <p align="center">
-  <img src="docs/img/skew_power_law.png" alt="ATM skew power law: rough Bergomi vs SPX-calibrated Heston" width="640">
+  <img src="docs/img/model_risk_fan_out.png" alt="Down-and-in put price vs barrier level under Black-Scholes, SPX-calibrated Heston and rough Bergomi" width="720">
 </p>
-<p align="center"><em>The short-dated ATM skew power law &psi;(T) &sim; T<sup>H&minus;1/2</sup>, measured in <a href="notebooks/05_rough_bergomi_skew.ipynb">notebook 05</a>: rough Bergomi holds the straight line (fitted slope &minus;0.43, theory &minus;0.4) exactly where the SPX-calibrated Heston saturates.</em></p>
+<p align="center"><em>The case study in <a href="notebooks/06_case_study_model_risk.ipynb">notebook 06</a>: three models anchored to the same vanilla market (right edge, 0.3% apart) price the same daily-monitored barrier trade <b>2.6&ndash;2.8&times;</b> apart at the contractual barrier. Calibration pins the marginals; the exotic reads the path.</em></p>
+
+## Validation at a glance
+
+| Claim | Evidence |
+|-------|----------|
+| 1,013 tests, 97% coverage, ~11,000 randomized property-based cases | [CI](https://github.com/Miguelreey/exotic-option-pricer/actions/workflows/ci.yml) on Python 3.10&ndash;3.13, Hypothesis invariants across all models |
+| Heston Fourier pricing pinned externally | 89 reference prices vs QuantLib's `AnalyticHestonEngine`, max deviation 5.0e-11 |
+| Two independent routes agree wherever no external benchmark exists | Gil-Pelaez vs Carr-Madan FFT < 3e-7; rBergomi hybrid scheme vs exact Cholesky within MC noise |
+| Calibrated to live market data | 1,718 SPX options across 8 expiries, RMSE 1.3 vol pts |
+| Reproduces the rough-volatility stylized fact | ATM skew slope &minus;0.43 measured vs theory H &minus; 1/2 = &minus;0.4 ([notebook 05](notebooks/05_rough_bergomi_skew.ipynb)) |
+| Model risk, quantified | same vanilla anchor, same barrier trade: prices 2.6&ndash;2.8&times; apart across models ([notebook 06](notebooks/06_case_study_model_risk.ipynb)) |
 
 ## Phase 1: Black-Scholes-Merton Analytical Engine
 
@@ -43,7 +54,7 @@ Production Monte Carlo engine for derivative pricing under GBM dynamics:
 Four families of path-dependent exotic instruments with analytical closed forms and full Monte Carlo integration:
 
 - **Asian options** — arithmetic and geometric averaging, fixed and floating strike. Kemna-Vorst (1990) closed form for geometric. Geometric-as-control-variate for arithmetic (>95% variance reduction)
-- **Barrier options** — 8 types (up/down × in/out × call/put) with optional rebate. Reiner-Rubinstein (1991) closed form (components A-F). Broadie-Glasserman-Yor (1997) continuity correction for discrete monitoring
+- **Barrier options** — 8 types (up/down × in/out × call/put) with optional rebate. Reiner-Rubinstein (1991) closed form (components A-F). Broadie-Glasserman-Kou (1997) continuity correction for discrete monitoring
 - **Lookback options** — floating and fixed strike, call and put. Goldman-Sosin-Gatto (1979) / Conze-Viswanathan (1991) closed forms. Dedicated L'Hôpital branch for zero-drift case (r = q)
 - **Digital options** — cash-or-nothing and asset-or-nothing (4 types). Black-Scholes closed form. Vanilla decomposition identity: C = AoN_call - K × CoN_call
 - **Numerical Greeks** — bump-and-revalue for delta, gamma, vega, theta, rho on any exotic. GBM path rescaling for delta/gamma (single simulation). Common random numbers via seed reset for vega/theta/rho
@@ -73,6 +84,11 @@ Bayer-Friz-Gatheral (2016) rough volatility — the model class that reproduces 
 - **Greeks under exact common random numbers** — delta/gamma by path rescaling (rBergomi coefficients are spot-independent), vega = dV/d sqrt(xi0) via the exact v-proportional-to-xi0 scaling, `model_greeks()` = dV/d{xi0, eta, H, rho}
 - **Phase 3 exotics on rough-volatility paths with zero code changes** — the model-agnostic `payoff(paths)` contract holds for its third model; IV surfaces via the Phase 1 Halley solver
 
+<p align="center">
+  <img src="docs/img/skew_power_law.png" alt="ATM skew power law: rough Bergomi vs SPX-calibrated Heston" width="640">
+</p>
+<p align="center"><em>The short-dated ATM skew power law &psi;(T) &sim; T<sup>H&minus;1/2</sup>, measured in <a href="notebooks/05_rough_bergomi_skew.ipynb">notebook 05</a>: rough Bergomi holds the straight line (fitted slope &minus;0.43, theory &minus;0.4) exactly where the SPX-calibrated Heston saturates.</em></p>
+
 ### Roadmap
 
 | Phase | Model | Status |
@@ -86,7 +102,7 @@ Bayer-Friz-Gatheral (2016) rough volatility — the model class that reproduces 
 
 ## Showcase notebooks
 
-Five executable notebooks in [`notebooks/`](notebooks/), each cross-checked in-cell with
+Six executable notebooks in [`notebooks/`](notebooks/), each cross-checked in-cell with
 asserts (parity gaps, z-scores against closed forms, fitted slopes vs theory). They run
 offline end-to-end — no API keys, no market-data downloads.
 
@@ -94,9 +110,10 @@ offline end-to-end — no API keys, no market-data downloads.
 |----------|---------------|
 | [01 — Black-Scholes & Greeks](notebooks/01_black_scholes_greeks.ipynb) | Analytical engine: Hull anchors, 16 Greeks, gamma heatmap, IV solver round-trip below 1e-9 at ~70 &mu;s per price+invert |
 | [02 — Monte Carlo & variance reduction](notebooks/02_monte_carlo_variance_reduction.ipynb) | Measured O(N<sup>&minus;1/2</sup>) convergence, antithetic/control/combined VR, scrambled Sobol QMC, importance sampling deep OTM |
-| [03 — Exotic options](notebooks/03_exotic_options.ipynb) | Asian/Barrier/Lookback/Digital vs closed forms, BGY/BGK discrete-monitoring corrections, in-out parity, numerical Greeks with CRN |
+| [03 — Exotic options](notebooks/03_exotic_options.ipynb) | Asian/Barrier/Lookback/Digital vs closed forms, BGK discrete-monitoring corrections, in-out parity, numerical Greeks with CRN |
 | [04 — Heston](notebooks/04_heston_stochastic_volatility.ipynb) | Gil-Pelaez vs Carr-Madan FFT at 2.4e-7, QE simulation under Feller violation, smile family, IV surface, calibration round-trip |
 | [05 — Rough Bergomi](notebooks/05_rough_bergomi_skew.ipynb) | Hybrid vs exact Cholesky cross-validation, rough volatility paths, the skew power law vs Heston saturation |
+| [06 — Case study: model risk](notebooks/06_case_study_model_risk.ipynb) | One trade, three models: a down-and-in put under BS, SPX-calibrated Heston and rough Bergomi — vanilla anchors 0.3% apart, exotic prices 2.6&ndash;2.8&times; apart, hedges 30% apart |
 
 <p align="center">
   <img src="docs/img/heston_iv_surface.png" alt="Heston implied volatility surface" width="560">
@@ -219,7 +236,7 @@ exotic_option_pricer/
 ├── instruments/
 │   ├── base.py              # ABC ExoticOption interface
 │   ├── asian.py             # Asian options: Kemna-Vorst CV, arithmetic/geometric
-│   ├── barrier.py           # Barrier options: Reiner-Rubinstein, BGY correction
+│   ├── barrier.py           # Barrier options: Reiner-Rubinstein, BGK correction
 │   ├── lookback.py          # Lookback options: Goldman-Sosin-Gatto, L'Hôpital
 │   └── digital.py           # Digital options: cash/asset-or-nothing
 ├── utils/
@@ -275,6 +292,7 @@ All pricing models inherit from `PricingModel` (abstract base class), ensuring i
 - McCrickerd & Pakkanen (2018). *Turbocharging Monte Carlo Pricing for the Rough Bergomi Model.* Quant. Finance 18(11).
 - Gatheral, Jaisson & Rosenbaum (2018). *Volatility is Rough.* Quant. Finance 18(6).
 - Fukasawa (2011). *Asymptotic Analysis for Stochastic Volatility: Martingale Expansion.* Finance & Stochastics 15.
+- Schoutens, Simons & Tistaert (2004). *A Perfect Calibration! Now What?* Wilmott Magazine, March.
 
 ## AI assistance
 

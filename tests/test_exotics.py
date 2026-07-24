@@ -1763,7 +1763,7 @@ class TestBarrierAnalytical:
 # ----------------------------------------------------------------------------
 class TestBarrierMC:
     """
-    Cross-validate discretely-monitored MC against the BGY-shifted
+    Cross-validate discretely-monitored MC against the BGK-shifted
     continuous-monitoring analytical formula.
     """
 
@@ -1798,9 +1798,9 @@ class TestBarrierMC:
         vanilla = np.maximum(paths[:, -1] - 100.0, 0.0)
         np.testing.assert_allclose(out.payoff(paths) + ins.payoff(paths), vanilla)
 
-    def test_down_out_call_mc_vs_analytical_bgy(self):
+    def test_down_out_call_mc_vs_analytical_bgk(self):
         """
-        With BGY continuity correction, discrete MC matches the shifted
+        With BGK continuity correction, discrete MC matches the shifted
         analytical within 3.5 * SE. Without correction, a systematic
         O(1/sqrt(n_steps)) bias would exceed this tolerance.
         """
@@ -1823,7 +1823,7 @@ class TestBarrierMC:
         )
         assert abs(res.price - rr_shift) < 3.5 * res.std_error
 
-    def test_up_out_call_mc_vs_analytical_bgy(self):
+    def test_up_out_call_mc_vs_analytical_bgk(self):
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 130.0
         bar = BarrierOption(K=K, barrier=H, barrier_type="up-and-out")
@@ -1843,7 +1843,7 @@ class TestBarrierMC:
         )
         assert abs(res.price - rr_shift) < 3.5 * res.std_error
 
-    def test_down_in_put_mc_vs_analytical_bgy(self):
+    def test_down_in_put_mc_vs_analytical_bgk(self):
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 85.0
         bar = BarrierOption(K=K, barrier=H, barrier_type="down-and-in", option_type="put")
@@ -1863,7 +1863,7 @@ class TestBarrierMC:
         )
         assert abs(res.price - rr_shift) < 3.5 * res.std_error
 
-    def test_up_in_put_mc_vs_analytical_bgy(self):
+    def test_up_in_put_mc_vs_analytical_bgk(self):
         S, K, T, r, sigma = 100.0, 100.0, 1.0, 0.05, 0.20
         H = 115.0
         bar = BarrierOption(K=K, barrier=H, barrier_type="up-and-in", option_type="put")
@@ -1907,8 +1907,8 @@ class TestBarrierMC:
 # ----------------------------------------------------------------------------
 # 17. Broadie-Glasserman-Kou Continuity Correction
 # ----------------------------------------------------------------------------
-class TestBarrierBGY:
-    """BGY correction utility and its effect on MC bias."""
+class TestBarrierBGK:
+    """BGK correction utility and its effect on MC bias."""
 
     def test_correction_constant_matches_bgk_value(self):
         """
@@ -1935,10 +1935,10 @@ class TestBarrierBGY:
         assert abs(H_fine - H) < abs(H_coarse - H)
         assert abs(H_fine - H) < 1e-2
 
-    def test_bgy_improves_mc_agreement(self):
+    def test_bgk_improves_mc_agreement(self):
         """
         For a discretely-monitored down-and-out call with 100 steps, the
-        MC price matches the BGY-shifted analytical more closely than
+        MC price matches the BGK-shifted analytical more closely than
         the nominal analytical. This demonstrates the O(1/n) -> O(1/n^2)
         bias reduction claimed by Broadie-Glasserman-Kou (1997).
         """
