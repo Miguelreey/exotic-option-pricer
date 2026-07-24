@@ -80,7 +80,7 @@ combination of A-F depending on (barrier_type, option_type) and the
 relative position of ``H`` vs ``K``. See :meth:`analytical_price` for
 the lookup table, which is a transcription of Haug (2007, Table 4-11).
 
-Broadie-Glasserman-Yor (1997) Continuity Correction
+Broadie-Glasserman-Kou (1997) Continuity Correction
 ---------------------------------------------------
 Monte Carlo simulation monitors the barrier at a finite set of times
 ``t_0 < t_1 < ... < t_n = T`` rather than continuously. Between two
@@ -145,8 +145,8 @@ from scipy.special import ndtr
 
 from .base import ExoticOption
 
-# Broadie-Glasserman-Yor universal constant: -zeta(1/2) / sqrt(2*pi)
-_BGY_BETA: float = 0.5826
+# Broadie-Glasserman-Kou universal constant: -zeta(1/2) / sqrt(2*pi)
+_BGK_BETA: float = 0.5826
 
 _VALID_BARRIER_TYPES: frozenset[str] = frozenset(
     {"up-and-out", "up-and-in", "down-and-out", "down-and-in"}
@@ -493,7 +493,7 @@ class BarrierOption(ExoticOption):
         direction: str,
     ) -> float:
         """
-        Broadie-Glasserman-Yor (1997) adjusted barrier for discrete monitoring.
+        Broadie-Glasserman-Kou (1997) adjusted barrier for discrete monitoring.
 
         The continuous-monitoring Reiner-Rubinstein price of a discretely
         monitored barrier option is obtained by replacing ``H`` with
@@ -544,7 +544,7 @@ class BarrierOption(ExoticOption):
             raise ValueError(f"direction must be 'up' or 'down', got '{direction}'")
 
         sign = 1.0 if d == "up" else -1.0
-        return float(barrier * np.exp(sign * _BGY_BETA * sigma * np.sqrt(dt)))
+        return float(barrier * np.exp(sign * _BGK_BETA * sigma * np.sqrt(dt)))
 
     def __repr__(self) -> str:
         extra = f", rebate={self.rebate}" if self.rebate else ""
